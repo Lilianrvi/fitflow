@@ -6,7 +6,7 @@
     <title>FitFlow</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="https://cdn.jsdelivr.net/npm/quagga/dist/quagga.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -2834,36 +2834,51 @@ async function handleAutocompleteSearch(e) {
     });
 }
         
-// Remplacez votre fonction startScanner existante par celle-ci
-// Remplacez votre fonction startScanner existante par celle-ci
 // Remplacez votre fonction startScanner existante par cette nouvelle version
 async function startScanner(isQuickAdd = false) {
     const modalContent = `
         <div class="glass-card p-6 rounded-3xl w-full max-w-sm text-center flex flex-col h-[80vh]">
             <h2 class="text-xl font-bold mb-4">Scanner un code-barres</h2>
-            <div id="reader" class="flex-grow"></div>
+            <div id="interactive" class="flex-grow"></div>
             <button id="close-scanner-btn" class="w-full mt-4 btn-primary">Annuler</button>
         </div>
     `;
     showModal(modalContent, (modalWrapper) => {
-        const readerContainer = modalWrapper.querySelector('#reader');
-        html5QrCode = new Html5Qrcode(readerContainer.id);
-
-        // --- PARTIE CORRIGÉE : NOUVELLE CONFIGURATION DU SCANNER ---
-        const qrCodeConfig = {
-            fps: 15, // Augmente la fréquence de scan
-            qrbox: { width: 280, height: 180 }, // Agrandit la zone de scan
-            rememberLastUsedCamera: true,
-            aspectRatio: 1.777, // Règle le ratio pour mieux s'adapter à la caméra du téléphone
-            disableFlip: false // Laisse le scan fonctionner même si l'image est inversée
-        };
-        // --- FIN DE LA CORRECTION ---
-
+        const scannerContainer = modalWrapper.querySelector('#interactive');
         const openFoodFactsApiUrl = 'https://world.openfoodfacts.org/api/v2/product/';
 
-        const onScanSuccess = async (decodedText) => {
-            html5QrCode.stop();
+        // Configuration pour QuaggaJS
+        const quaggaConfig = {
+            inputStream: {
+                name: "Live",
+                type: "LiveStream",
+                target: scannerContainer, // Cible l'élément 'interactive'
+                constraints: {
+                    facingMode: "environment" // Utilise la caméra arrière
+                }
+            },
+            decoder: {
+                readers: ["ean_reader", "code_128_reader", "upc_reader", "upc_e_reader", "ean_8_reader"]
+            }
+        };
+
+        Quagga.init(quaggaConfig, function (err) {
+            if (err) {
+                console.error("Erreur lors de l'initialisation de QuaggaJS:", err);
+                showToast("Erreur de la caméra. Réessayez.", "error");
+                closeModal();
+                return;
+            }
+            Quagga.start();
+        });
+
+        // Callback de succès de QuaggaJS
+        Quagga.onDetected(async (data) => {
+            Quagga.stop(); // Arrête le scanner après la détection
             closeModal();
+
+            const decodedText = data.codeResult.code;
+            console.log(`Code-barres scanné : ${decodedText}`);
 
             try {
                 const response = await fetch(`${openFoodFactsApiUrl}${decodedText}`, {
@@ -2871,21 +2886,17 @@ async function startScanner(isQuickAdd = false) {
                         'User-Agent': 'FitFlowApp/1.0 (fitflow@example.com)'
                     }
                 });
-                const data = await response.json();
+                const apiData = await response.json();
 
-                if (data.status === 1 && data.product) {
-                    const product = data.product;
+                if (apiData.status === 1 && apiData.product) {
+                    const product = apiData.product;
                     const nutriments = product.nutriments || {};
-                    let calories = nutriments.energy_kcal_100g || 0;
-                    if (calories === 0 && nutriments.energy_100g) {
-                        calories = nutriments.energy_100g / 4.184;
-                    }
 
                     const formattedFoodItem = {
                         code: product.code,
                         name: product.product_name_fr || product.product_name || 'Aliment inconnu',
                         brand: product.brands || null,
-                        calories: Math.round(calories),
+                        calories: Math.round((nutriments.energy_100g || 0) / 4.184) || 0,
                         protein: nutriments.proteins_100g || 0,
                         fat: nutriments.fat_100g || 0,
                         carbs: nutriments.carbohydrates_100g || 0,
@@ -2897,7 +2908,6 @@ async function startScanner(isQuickAdd = false) {
 
                     addIngredientToMeal(formattedFoodItem, isQuickAdd);
                     showToast("Produit trouvé !", "success");
-
                 } else {
                     showToast("Produit non trouvé.", "error");
                 }
@@ -2905,18 +2915,10 @@ async function startScanner(isQuickAdd = false) {
                 console.error('Erreur lors de la recherche du code-barres:', error);
                 showToast("Erreur de connexion à l'API.", "error");
             }
-        };
-
-        const onScanError = (errorMessage) => {
-            // Le scanner ne s'arrête pas s'il ne parvient pas à décoder
-            // On peut logger les erreurs ici pour le débogage
-            // console.warn(`Erreur de scan: ${errorMessage}`);
-        };
-
-        html5QrCode.start({ facingMode: "environment" }, qrCodeConfig, onScanSuccess, onScanError);
+        });
 
         modalWrapper.querySelector('#close-scanner-btn').onclick = () => {
-            html5QrCode.stop();
+            Quagga.stop();
             closeModal();
         };
     });
