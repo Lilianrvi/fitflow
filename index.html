@@ -1081,6 +1081,7 @@
         <div id="page-container" class="absolute inset-0 overflow-y-auto scrollbar-hide"></div>
         <div id="bottom-nav-container" class="absolute bottom-4 left-4 right-4 h-16 z-20"></div>
         <div id="global-modal-container" class="fixed inset-0 z-30 pointer-events-none"></div>
+        <div id="scanner-container" class="fixed inset-0 z-40 hidden"></div>
     </div>
 
  <script type="module">
@@ -2834,97 +2835,82 @@ async function handleAutocompleteSearch(e) {
 }
         
 // Remplacez votre fonction startScanner existante par celle-ci
+// Remplacez votre fonction startScanner existante par celle-ci
 async function startScanner(isQuickAdd = false) {
-    const scannerContainer = document.getElementById('scanner-container');
-    scannerContainer.classList.remove('hidden');
+    const modalContent = `
+        <div class="glass-card p-6 rounded-3xl w-full max-w-sm text-center flex flex-col h-[80vh]">
+            <h2 class="text-xl font-bold mb-4">Scanner un code-barres</h2>
+            <div id="reader" class="flex-grow"></div>
+            <button id="close-scanner-btn" class="w-full mt-4 btn-primary">Annuler</button>
+        </div>
+    `;
+    showModal(modalContent, (modalWrapper) => {
+        const readerContainer = modalWrapper.querySelector('#reader');
+        html5QrCode = new Html5Qrcode(readerContainer.id);
 
-    const qrCodeConfig = {
-        fps: 10,
-        qrbox: { width: 250, height: 150 }
-    };
-    html5QrCode = new Html5Qrcode("reader");
+        const qrCodeConfig = {
+            fps: 10,
+            qrbox: { width: 250, height: 150 }
+        };
+        const openFoodFactsApiUrl = 'https://world.openfoodfacts.org/api/v2/product/';
 
-    // L'URL pour la recherche de produits par code-barres sur Open Food Facts
-    const openFoodFactsApiUrl = 'https://world.openfoodfacts.org/api/v2/product/';
+        const onScanSuccess = async (decodedText) => {
+            html5QrCode.stop();
+            closeModal();
 
-    // Fonction de rappel lorsque le scan réussit
-    const onScanSuccess = async (decodedText) => {
-        // Empêche le scan de se déclencher plusieurs fois
-        html5QrCode.stop().then(() => {
-            scannerContainer.classList.add('hidden');
-        }).catch(err => {
-            console.error("Erreur lors de l'arrêt du scanner:", err);
-        });
+            try {
+                const response = await fetch(`${openFoodFactsApiUrl}${decodedText}`, {
+                    headers: {
+                        'User-Agent': 'FitFlowApp/1.0 (fitflow@example.com)'
+                    }
+                });
+                const data = await response.json();
 
-        // Appelle l'API d'Open Food Facts avec le code-barres scanné
-        try {
-            const response = await fetch(`${openFoodFactsApiUrl}${decodedText}`, {
-                headers: {
-                    'User-Agent': 'FitFlowApp/1.0 (fitflow@example.com)'
+                if (data.status === 1 && data.product) {
+                    const product = data.product;
+                    const nutriments = product.nutriments || {};
+                    let calories = nutriments.energy_kcal_100g || 0;
+                    if (calories === 0 && nutriments.energy_100g) {
+                        calories = nutriments.energy_100g / 4.184;
+                    }
+
+                    const formattedFoodItem = {
+                        code: product.code,
+                        name: product.product_name_fr || product.product_name || 'Aliment inconnu',
+                        brand: product.brands || null,
+                        calories: Math.round(calories),
+                        protein: nutriments.proteins_100g || 0,
+                        fat: nutriments.fat_100g || 0,
+                        carbs: nutriments.carbohydrates_100g || 0,
+                        sugars: nutriments.sugars_100g || 0,
+                        fiber: nutriments.fiber_100g || 0,
+                        nutri_score: product.nutriscore_grade || 'unknown',
+                        imageUrl: product.image_url || null,
+                    };
+
+                    addIngredientToMeal(formattedFoodItem, isQuickAdd);
+                    showToast("Produit trouvé !", "success");
+
+                } else {
+                    showToast("Produit non trouvé.", "error");
                 }
-            });
-            const data = await response.json();
-
-            // Vérifie si le produit existe et renvoie le format attendu
-            if (data.status === 1 && data.product) {
-                const product = data.product;
-                const nutriments = product.nutriments || {};
-
-                let calories = nutriments.energy_kcal_100g || 0;
-                if (calories === 0 && nutriments.energy_100g) {
-                    calories = nutriments.energy_100g / 4.184;
-                }
-
-                const formattedFoodItem = {
-                    code: product.code,
-                    name: product.product_name_fr || product.product_name || 'Aliment inconnu',
-                    brand: product.brands || null,
-                    calories: Math.round(calories),
-                    protein: nutriments.proteins_100g || 0,
-                    fat: nutriments.fat_100g || 0,
-                    carbs: nutriments.carbohydrates_100g || 0,
-                    sugars: nutriments.sugars_100g || 0,
-                    fiber: nutriments.fiber_100g || 0,
-                    nutri_score: product.nutriscore_grade || 'unknown',
-                    imageUrl: product.image_url || null,
-                };
-                
-                addIngredientToMeal(formattedFoodItem, isQuickAdd);
-                showToast("Produit trouvé !", "success");
-
-            } else {
-                showToast("Produit non trouvé.", "error");
+            } catch (error) {
+                console.error('Erreur lors de la recherche du code-barres:', error);
+                showToast("Erreur de connexion à l'API.", "error");
             }
-        } catch (error) {
-            console.error('Erreur lors de la recherche du code-barres:', error);
-            showToast("Erreur de connexion à l'API.", "error");
-        }
-    };
-    
-    // Fonction de rappel en cas d'erreur de scan
-    const onScanError = (errorMessage) => {
-        console.warn(`Erreur de scan: ${errorMessage}`);
-    };
+        };
 
-    // Démarre le scanner
-    html5QrCode.start({ facingMode: "environment" }, qrCodeConfig, onScanSuccess, onScanError);
+        const onScanError = (errorMessage) => {
+            console.warn(`Erreur de scan: ${errorMessage}`);
+        };
 
-    // Ajoute un bouton pour arrêter le scanner
-    scannerContainer.innerHTML += `
-        <div class="fixed top-6 right-6">
-            <button id="close-scanner-btn" class="w-12 h-12 rounded-full bg-white/20 hover:bg-white/30 text-white text-xl">
-                <i class="fa-solid fa-xmark"></i>
-            </button>
-        </div>`;
-    
-    // Ajoute l'événement pour fermer le scanner
-    document.getElementById('close-scanner-btn').onclick = () => {
-        html5QrCode.stop().then(() => {
-            scannerContainer.classList.add('hidden');
-        }).catch(err => {
-            console.error("Erreur lors de l'arrêt du scanner:", err);
-        });
-    };
+        html5QrCode.start({ facingMode: "environment" }, qrCodeConfig, onScanSuccess, onScanError);
+
+        modalWrapper.querySelector('#close-scanner-btn').onclick = () => {
+            html5QrCode.stop();
+            closeModal();
+        };
+    });
 }
 
         function openQuickAddFood() {
