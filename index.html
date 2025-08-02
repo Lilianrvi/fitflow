@@ -2851,9 +2851,7 @@ async function startScanner(isQuickAdd = false) {
     showModal(modalContent, (modalWrapper) => {
         const scannerContainer = modalWrapper.querySelector('#interactive');
         const statusMessageEl = modalWrapper.querySelector('#scan-status-message');
-        const openFoodFactsApiUrl = 'https://world.openfoodfacts.org/api/v2/product/';
 
-        // Configuration pour QuaggaJS
         const quaggaConfig = {
             inputStream: {
                 name: "Live",
@@ -2878,64 +2876,68 @@ async function startScanner(isQuickAdd = false) {
             Quagga.start();
         });
 
-        // Détection en cours
-        Quagga.onDetected((data) => {
-            const decodedCode = data.codeResult.code;
-
-            // Mettre à jour le message pour indiquer que la détection est en cours
-            statusMessageEl.textContent = `Code détecté : ${decodedCode}. Ne bougez plus !`;
-            statusMessageEl.classList.add('text-yellow-400');
-            statusMessageEl.classList.remove('text-gray-400');
+        Quagga.onProcessed(function(result) {
+            const drawingCanvas = Quagga.canvas.dom.overlay;
+            if (drawingCanvas) {
+                const ctx = drawingCanvas.getContext('2d');
+                ctx.clearRect(0, 0, parseInt(drawingCanvas.width), parseInt(drawingCanvas.height));
+                if (result) {
+                    if (result.boxes) {
+                        result.boxes.filter(function (box) {
+                            return box !== result.box;
+                        }).forEach(function (box) {
+                            Quagga.ImageDebug.drawPath(box, { x: 0, y: 1 }, ctx, { color: "green", lineWidth: 2 });
+                        });
+                    }
+                    if (result.box) {
+                        Quagga.ImageDebug.drawPath(result.box, { x: 0, y: 1 }, ctx, { color: "#00F", lineWidth: 2 });
+                    }
+                    if (result.codeResult && result.codeResult.code) {
+                        Quagga.ImageDebug.drawPath(result.line, { x: 'x', y: 'y' }, ctx, { color: "red", lineWidth: 3 });
+                    }
+                }
+            }
         });
 
-        // Lecture finale
+        let lastCode = null;
+        let detectionTimeout = null;
+
         Quagga.onDetected(async (data) => {
-            Quagga.stop(); // Arrête le scanner après la détection
-            closeModal();
+            const decodedCode = data.codeResult.code;
 
-            const decodedText = data.codeResult.code;
-            console.log(`Code-barres scanné : ${decodedText}`);
+            if (decodedCode && decodedCode !== lastCode) {
+                lastCode = decodedCode;
+                statusMessageEl.textContent = `Code détecté : ${decodedCode}. Ne bougez plus !`;
+                statusMessageEl.classList.add('text-yellow-400');
+                statusMessageEl.classList.remove('text-gray-400');
 
-            try {
-                const response = await fetch(`${openFoodFactsApiUrl}${decodedText}`, {
-                    headers: {
-                        'User-Agent': 'FitFlowApp/1.0 (fitflow@example.com)'
+                if (detectionTimeout) clearTimeout(detectionTimeout);
+                detectionTimeout = setTimeout(async () => {
+                    Quagga.stop();
+                    closeModal();
+
+                    try {
+                        const response = await fetch(`https://fitflow-api-j5yq.onrender.com/api/aliments/barcode?code=${decodedCode}`);
+                        const apiData = await response.json();
+
+                        if (response.ok) {
+                            addIngredientToMeal(apiData, isQuickAdd);
+                            showToast("Produit trouvé !", "success");
+                        } else {
+                            showToast(apiData.error || "Produit non trouvé.", "error");
+                        }
+                    } catch (error) {
+                        console.error('Erreur lors de la recherche du code-barres:', error);
+                        showToast("Erreur de connexion à l'API.", "error");
                     }
-                });
-                const apiData = await response.json();
-
-                if (apiData.status === 1 && apiData.product) {
-                    const product = apiData.product;
-                    const nutriments = product.nutriments || {};
-
-                    const formattedFoodItem = {
-                        code: product.code,
-                        name: product.product_name_fr || product.product_name || 'Aliment inconnu',
-                        brand: product.brands || null,
-                        calories: Math.round((nutriments.energy_100g || 0) / 4.184) || 0,
-                        protein: nutriments.proteins_100g || 0,
-                        fat: nutriments.fat_100g || 0,
-                        carbs: nutriments.carbohydrates_100g || 0,
-                        sugars: nutriments.sugars_100g || 0,
-                        fiber: nutriments.fiber_100g || 0,
-                        nutri_score: product.nutriscore_grade || 'unknown',
-                        imageUrl: product.image_url || null,
-                    };
-
-                    addIngredientToMeal(formattedFoodItem, isQuickAdd);
-                    showToast("Produit trouvé !", "success");
-                } else {
-                    showToast("Produit non trouvé.", "error");
-                }
-            } catch (error) {
-                console.error('Erreur lors de la recherche du code-barres:', error);
-                showToast("Erreur de connexion à l'API.", "error");
+                }, 1000); // Délai de 1s pour la confirmation du code-barres
             }
         });
 
         modalWrapper.querySelector('#close-scanner-btn').onclick = () => {
             Quagga.stop();
             closeModal();
+            if (detectionTimeout) clearTimeout(detectionTimeout);
         };
     });
 }
