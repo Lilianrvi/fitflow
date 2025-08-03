@@ -2881,121 +2881,139 @@ async function fetchProductFromAPI(code) {
 
 
 /**
- * VERSION ENTIÈREMENT REVUE DE LA FONCTION startScanner
- * Remplacez votre ancienne fonction par celle-ci.
+ * VERSION FINALE DE LA FONCTION startScanner
+ * Intègre la nouvelle interface et des améliorations de fiabilité.
  */
 async function startScanner(isQuickAdd = false) {
-    // 1. Interface de la modale améliorée avec un bouton pour le flash et une ligne de guidage.
+    // 1. Interface de la modale améliorée avec un viseur esthétique et une animation.
     const modalContent = `
         <div class="glass-card p-6 rounded-3xl w-full max-w-sm text-center flex flex-col h-[80vh]">
             <header class="flex justify-between items-center mb-4">
                 <h2 class="text-2xl font-bold">Scanner un produit</h2>
-                <button id="torch-toggle-btn" class="text-gray-400 hover:text-white p-2 w-10 h-10 rounded-full bg-black/20 hidden">
+                <button id="torch-toggle-btn" class="text-gray-400 hover:text-white p-2 w-10 h-10 rounded-full bg-black/20 hidden" title="Activer le flash">
                     <i class="fa-solid fa-lightbulb text-lg"></i>
                 </button>
             </header>
-            <div id="interactive" class="relative flex-grow rounded-lg overflow-hidden bg-black">
-                 <div style="position: absolute; top: 50%; left: 5%; right: 5%; height: 2px; transform: translateY(-50%); background: red; box-shadow: 0 0 5px red;"></div>
+            
+            <div id="interactive" class="relative flex-grow rounded-lg overflow-hidden bg-black group">
+                <style>
+                    .scanner-corner {
+                        position: absolute; width: 30px; height: 30px;
+                        border: 5px solid white; border-radius: 12px;
+                        transition: border-color 0.2s;
+                    }
+                    .group:hover .scanner-corner { border-color: var(--accent-color); }
+                    .scanner-corner.top-left { top: 15px; left: 15px; border-right: none; border-bottom: none; }
+                    .scanner-corner.top-right { top: 15px; right: 15px; border-left: none; border-bottom: none; }
+                    .scanner-corner.bottom-left { bottom: 15px; left: 15px; border-right: none; border-top: none; }
+                    .scanner-corner.bottom-right { bottom: 15px; right: 15px; border-left: none; border-top: none; }
+                    @keyframes scanner-animation {
+                        0%, 100% { top: 15%; } 50% { top: 85%; }
+                    }
+                    .scanner-laser {
+                        position: absolute; left: 10%; right: 10%; height: 2px;
+                        background: var(--accent-color);
+                        box-shadow: 0 0 8px var(--accent-color);
+                        animation: scanner-animation 3s infinite ease-in-out;
+                        border-radius: 2px;
+                    }
+                </style>
+                <div class="scanner-corner top-left"></div>
+                <div class="scanner-corner top-right"></div>
+                <div class="scanner-corner bottom-left"></div>
+                <div class="scanner-corner bottom-right"></div>
+                <div class="scanner-laser"></div>
             </div>
+            
             <p id="scan-status-message" class="text-gray-400 mt-4 h-6 flex items-center justify-center font-semibold">
                 Visez un code-barres...
             </p>
-            <button id="close-scanner-btn" class="w-full mt-4 glass-card p-3 rounded-lg font-bold">Annuler</button>
+            <button class="close-modal w-full mt-4 glass-card p-3 rounded-lg font-bold">Annuler</button>
         </div>
     `;
 
+    // FIABILITÉ ACCRUE : Le 'closeCallback' garantit que la caméra est toujours libérée.
+    const cleanup = () => {
+        Quagga.stop();
+        // Vous pouvez ajouter d'autres actions de nettoyage ici si nécessaire.
+    };
+
     showModal(modalContent, (modalWrapper) => {
+        // ... (Le reste du code de la fonction est quasi identique à la version précédente)
         const scannerContainer = modalWrapper.querySelector('#interactive');
         const statusMessageEl = modalWrapper.querySelector('#scan-status-message');
         const torchBtn = modalWrapper.querySelector('#torch-toggle-btn');
         let isTorchOn = false;
 
-        // 2. Configuration QuaggaJS optimisée pour la robustesse et la performance.
         const quaggaConfig = {
             inputStream: {
                 name: "Live",
                 type: "LiveStream",
                 target: scannerContainer,
                 constraints: {
-                    width: { min: 640, ideal: 1280, max: 1920 }, // Demande une résolution plus élevée
-                    height: { min: 480, ideal: 720, max: 1080 },
+                    width: { min: 640, ideal: 1280 },
+                    height: { min: 480, ideal: 720 },
                     facingMode: "environment",
-                    advanced: [{ torch: isTorchOn }, { focusMode: 'continuous' }] // Active la mise au point continue
+                    advanced: [{ torch: isTorchOn }, { focusMode: 'continuous' }]
                 },
-                area: { // Restreint la zone de scan au milieu pour plus de précision
-                    top: "40%", right: "10%", left: "10%", bottom: "40%"
-                },
-                singleChannel: false, // Analyse l'image en couleurs (meilleur contraste)
-                frequency: 10 // Limite à 10 images/sec pour donner plus de temps de calcul à chaque image
+                area: { top: "30%", right: "10%", left: "10%", bottom: "30%" },
+                frequency: 10
             },
-            locator: {
-                halfSample: false, // Utilise la pleine résolution de l'image
-                patchSize: "large", // Plus efficace pour les codes-barres difficiles ou abîmés
-            },
-            decoder: {
-                readers: ["ean_reader", "upc_reader", "ean_8_reader"], // Se concentre sur les formats les plus courants
-                multiple: false // Optimise pour la détection d'un seul code-barres à la fois
-            },
+            locator: { halfSample: false, patchSize: "large" },
+            decoder: { readers: ["ean_reader", "upc_reader", "ean_8_reader"], multiple: false },
             locate: true,
-            numOfWorkers: navigator.hardwareConcurrency || 2, // Utilise les coeurs du processeur sans vider la batterie
+            numOfWorkers: navigator.hardwareConcurrency || 2,
         };
 
-        // Fonction pour démarrer ou redémarrer Quagga (utile pour le flash)
         const startQuagga = () => {
             Quagga.init(quaggaConfig, function (err) {
                 if (err) {
-                    console.error("Erreur d'initialisation de QuaggaJS:", err);
-                    statusMessageEl.textContent = "Erreur caméra.";
+                    // GESTION AMÉLIORÉE : Gestion plus claire des erreurs de caméra.
+                    console.error("Erreur QuaggaJS:", err);
+                    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                        statusMessageEl.textContent = "Accès à la caméra refusé.";
+                    } else {
+                        statusMessageEl.textContent = "Erreur caméra.";
+                    }
                     statusMessageEl.classList.add('text-red-400');
                     return;
                 }
-                
-                // Vérifie si la caméra a un flash et affiche le bouton si c'est le cas
                 const capabilities = Quagga.CameraAccess.getActiveTrack().getCapabilities();
                 if (capabilities.torch) {
                     torchBtn.classList.remove('hidden');
                 }
-
                 Quagga.start();
             });
         };
 
-        startQuagga(); // Premier démarrage
+        startQuagga();
 
-        // 3. Logique de détection robuste ("Vérification de confiance")
         let detectedCodes = [];
-        const requiredDetections = 3; // Exige 3 détections identiques pour valider
+        const requiredDetections = 3;
 
         Quagga.onDetected(async (result) => {
             const code = result.codeResult.code;
             if (!code) return;
 
             detectedCodes.push(code);
-
-            // Continue de scanner si pas assez de détections
             if (detectedCodes.length < requiredDetections) return;
 
-            // Vérifie si les X dernières détections sont identiques
             const lastDetections = detectedCodes.slice(-requiredDetections);
             if (new Set(lastDetections).size === 1) {
-                // SUCCÈS ! Détection fiable.
-                Quagga.stop(); // Arrête le scanner immédiatement
-                detectedCodes = []; // Réinitialise pour le futur
+                cleanup(); // Arrête le scanner
+                detectedCodes = []; 
 
                 statusMessageEl.textContent = `Recherche de ${code}...`;
                 statusMessageEl.classList.add('text-yellow-400');
                 
-                // 4. Appel à l'API avec logique de re-tentative
                 let productData = null;
                 for (let attempt = 1; attempt <= 3; attempt++) {
                     try {
                         productData = await fetchProductFromAPI(code);
-                        if (productData) break; // Succès, on sort de la boucle
+                        if (productData) break;
                     } catch (error) {
                         console.error(`Tentative API ${attempt} échouée:`, error);
-                        if (attempt < 3) {
-                             statusMessageEl.textContent = `Erreur API, tentative ${attempt+1}...`;
-                        } else {
+                        if (attempt >= 3) {
                             showToast("Produit non trouvé après plusieurs tentatives.", "error");
                             closeModal();
                             return;
@@ -3003,39 +3021,30 @@ async function startScanner(isQuickAdd = false) {
                     }
                 }
 
-                closeModal(); // Ferme la modale du scanner
+                closeModal();
 
                 if (productData) {
                     addIngredientToMeal(productData, isQuickAdd);
                     showToast("Produit ajouté !", "success");
-                    // Met à jour le succès de scan
                     updateAchievementProgress('scan_master', code, 'add_to_set');
                 } else {
-                     showToast("Produit non trouvé dans la base de données.", "error");
+                     showToast("Produit non trouvé.", "error");
                 }
             } else {
-                // Si les détections ne sont pas identiques, on continue de scanner
                 detectedCodes = detectedCodes.slice(1);
             }
         });
 
-        // 5. Logique des contrôles de l'interface (Flash et Fermeture)
         torchBtn.addEventListener('click', () => {
             isTorchOn = !isTorchOn;
             torchBtn.classList.toggle('text-yellow-400', isTorchOn);
             torchBtn.classList.toggle('bg-yellow-400/20', isTorchOn);
-
-            // Redémarre Quagga avec le nouveau réglage de flash
             Quagga.stop();
             quaggaConfig.inputStream.constraints.advanced = [{ torch: isTorchOn }, { focusMode: 'continuous' }];
             startQuagga();
         });
 
-        modalWrapper.querySelector('#close-scanner-btn').onclick = () => {
-            Quagga.stop();
-            closeModal();
-        };
-    });
+    }, cleanup); // On passe la fonction de nettoyage ici
 }
 
         function openQuickAddFood() {
