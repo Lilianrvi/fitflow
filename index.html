@@ -2906,14 +2906,21 @@ async function handleAutocompleteSearch(e) {
                 fields: 'code,product_name_fr,product_name,brands,nutriments,image_url,nutriscore_score,additives_tags,labels_tags'
             });
             
-            const apiUrl = `/api/recherche?${searchParams.toString()}`;
+            const apiUrl = `https://world.openfoodfacts.org/cgi/search.pl?${searchParams.toString()}`;
 
+            // ----- MODIFICATION CLÉ CI-DESSOUS -----
+            // On utilise un User-Agent qui ressemble davantage à un vrai navigateur,
+            // tout en gardant le nom de votre application.
             const response = await fetch(apiUrl, {
-                headers: { 'User-Agent': 'FitFlowApp/1.0 - Projet Etudiant' }
+                headers: { 
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 FitFlowApp/1.0 - Projet Etudiant' 
+                }
             });
+            // ----- FIN DE LA MODIFICATION -----
 
             if (!response.ok) {
-                throw new Error(`Erreur réseau: ${response.statusText}`);
+                // Cette erreur sera probablement levée sur la version web
+                throw new Error(`Erreur réseau: ${response.status} ${response.statusText}`);
             }
             
             const data = await response.json();
