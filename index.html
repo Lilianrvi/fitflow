@@ -2878,49 +2878,40 @@ async function handleAutocompleteSearch(e) {
     const query = e.target.value;
     const resultsContainer = document.getElementById('autocomplete-results');
 
-    // Annule la recherche précédente si une nouvelle touche est pressée rapidement
     if (autocompleteTimeout) {
         clearTimeout(autocompleteTimeout);
     }
 
-    // Si le champ est vide ou trop court, on nettoie les résultats et on arrête
     if (!query || query.length < 3) {
         resultsContainer.innerHTML = '';
         currentSearchResults = [];
         return;
     }
 
-    // Affiche un message de chargement
     resultsContainer.innerHTML = '<div class="p-3 text-gray-400 text-center">Recherche...</div>';
 
-    // Lance la recherche après 300ms d'inactivité pour éviter les appels API excessifs
     autocompleteTimeout = setTimeout(async () => {
         try {
-            const searchParams = new URLSearchParams({
-                search_terms: query,
-                action: 'process',
-                json: 1,
-                page_size: 20, // Limite à 20 résultats pour la performance
-                lc: 'fr',
-                sort_by: 'unique_scans_n', // Trie par popularité
-                fields: 'code,product_name_fr,product_name,brands,nutriments,image_url,nutriscore_score,additives_tags,labels_tags'
-            });
+            // --- MODIFICATION CLÉ CI-DESSOUS ---
+            // 1. On simplifie DRASTIQUEMENT les champs demandés. On ne prend que le strict nécessaire
+            // pour l'affichage de la liste. Moins de données = requête plus rapide et moins de risques de blocage.
+            const fields = 'code,product_name_fr,product_name,brands,nutriments';
             
-            const apiUrl = `https://world.openfoodfacts.org/cgi/search.pl?${searchParams.toString()}`;
+            // 2. On construit l'URL manuellement. C'est plus "brut" mais universellement compatible.
+            const encodedQuery = encodeURIComponent(query);
+            const apiUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodedQuery}&action=process&json=1&page_size=20&lc=fr&sort_by=unique_scans_n&fields=${fields}`;
 
-            // ----- MODIFICATION CLÉ CI-DESSOUS -----
-            // On utilise un User-Agent qui ressemble davantage à un vrai navigateur,
-            // tout en gardant le nom de votre application.
+            // On garde le User-Agent robuste qui a fonctionné sur PC.
             const response = await fetch(apiUrl, {
                 headers: { 
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 FitFlowApp/1.0 - Projet Etudiant' 
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 FitFlowApp/1.0 - Projet Etudiant'
                 }
             });
-            // ----- FIN DE LA MODIFICATION -----
+            // --- FIN DES MODIFICATIONS ---
 
             if (!response.ok) {
-                // Cette erreur sera probablement levée sur la version web
-                throw new Error(`Erreur réseau: ${response.status} ${response.statusText}`);
+                // Cette erreur est celle que vous voyez sur mobile.
+                throw new Error(`Erreur API: Statut ${response.status}`);
             }
             
             const data = await response.json();
@@ -2931,12 +2922,10 @@ async function handleAutocompleteSearch(e) {
                  return;
             }
 
-            // Utilise la fonction de formatage pour traiter les résultats
+            // On utilise la même fonction de formatage, elle s'adaptera aux champs disponibles.
             const formattedProducts = data.products.map(_formatApiProduct);
-
             currentSearchResults = formattedProducts;
 
-            // Affiche les résultats formatés dans le conteneur
             resultsContainer.innerHTML = currentSearchResults.map((food, index) =>
                 `<div class="p-3 hover:bg-violet-500 rounded-md cursor-pointer" data-index="${index}">
                     <p class="font-semibold">${food.name}</p>
@@ -2945,10 +2934,11 @@ async function handleAutocompleteSearch(e) {
             ).join('');
 
         } catch (error) {
-            console.error('Erreur lors de la recherche d\'aliments:', error);
+            console.error('Erreur DÉFINITIVE lors de la recherche:', error);
+            // Ce message est celui qui s'affiche à l'utilisateur.
             resultsContainer.innerHTML = '<div class="p-3 text-red-400 text-center">Erreur de connexion à l\'API.</div>';
         }
-    }, 300); // Délai de 300ms
+    }, 300);
 }
 
         function addIngredientToMeal(foodItem, isQuickAdd = false) {
