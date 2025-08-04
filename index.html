@@ -112,6 +112,44 @@
     border-top: 2px solid var(--accent-color) !important;
 }
 
+/* --- STYLES POUR LE GUIDE INTERACTIF --- */
+        .guide-accordion-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            padding: 1rem;
+            font-size: 1.125rem; /* text-lg */
+            font-weight: 700; /* font-bold */
+            background-color: rgba(255, 255, 255, 0.05);
+            border-radius: 0.75rem; /* rounded-xl */
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .guide-accordion-header:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        .guide-accordion-header .icon-rotate {
+            transition: transform 0.3s ease-out;
+        }
+        .guide-accordion-header.active .icon-rotate {
+            transform: rotate(180deg);
+        }
+        .guide-accordion-panel {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out, padding 0.3s ease-out;
+            padding: 0 1rem;
+        }
+        .guide-accordion-panel p {
+            margin-bottom: 0.75rem;
+            line-height: 1.6;
+            color: #D1D5DB; /* text-gray-300 */
+        }
+        .guide-accordion-panel strong {
+            color: #C4B5FD; /* text-violet-300 */
+        }
+
         .calendar-day.drag-over { background-color: rgba(var(--accent-color), 0.2); border: 1px solid var(--accent-color); }
         .calendar-day.past-day { color: #6B7280; cursor: not-allowed; }
         .calendar-day.past-day .event-dot { background-color: #6B7280; }
@@ -1083,6 +1121,51 @@
     }
 }
 
+#flow-switcher {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            bottom: 8px; /* Ajustez pour un alignement parfait avec la nav */
+            width: 68px;
+            height: 68px;
+            border-radius: 9999px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.4s cubic-bezier(0.2, 1, 0.2, 1);
+            z-index: 10;
+        }
+
+        #flow-switcher .icon-wrapper {
+            position: absolute;
+            transition: transform 0.4s cubic-bezier(0.2, 1, 0.2, 1);
+        }
+
+        /* État par défaut : WORKOUT */
+        #app-container.workout-active #flow-switcher {
+            background: linear-gradient(145deg, #A78BFA, #7C3AED);
+            box-shadow: 0 5px 20px rgba(124, 58, 237, 0.4);
+        }
+        #app-container.workout-active #flow-switcher .workout-icon { transform: scale(1) rotate(0deg); }
+        #app-container.workout-active #flow-switcher .nutrition-icon { transform: scale(0) rotate(-90deg); }
+
+        /* État activé : NUTRITION */
+        #app-container.nutrition-active #flow-switcher {
+            background: linear-gradient(145deg, #34D399, #059669);
+            box-shadow: 0 5px 20px rgba(5, 150, 105, 0.4);
+        }
+        #app-container.nutrition-active #flow-switcher .workout-icon { transform: scale(0) rotate(90deg); }
+        #app-container.nutrition-active #flow-switcher .nutrition-icon { transform: scale(1) rotate(0deg); }
+
+        /* --- Animation de transition de page --- */
+        .page-transition {
+            transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
+        }
+        .page-fade-out {
+            opacity: 0;
+            transform: scale(0.98);
+        }
+
     </style>
 </head>
 <body class="flex justify-center items-center min-h-screen p-4">
@@ -1099,8 +1182,9 @@
 
  <script type="module">
         // --- SYSTÈME DE RANGS ---
+        
         const RANK_NAMES = ['Novice', 'Rookie', 'Disciple', 'Forgeron', 'Vétéran', 'Prodige', 'Colosse', 'Demi-Dieu'];
-const RANK_POINTS_MAP = {
+        const RANK_POINTS_MAP = {
             'Novice III': 1, 'Novice II': 2, 'Novice I': 3,
             'Rookie III': 4, 'Rookie II': 5, 'Rookie I': 6,
             'Disciple III': 7, 'Disciple II': 8, 'Disciple I': 9,
@@ -1110,6 +1194,37 @@ const RANK_POINTS_MAP = {
             'Colosse III': 19, 'Colosse II': 20, 'Colosse I': 21,
             'Demi-Dieu III': 22, 'Demi-Dieu II': 23, 'Demi-Dieu I': 24
         };
+
+// --- SYSTÈME DE NIVEAUX ET QUÊTES ---
+
+        // Les seuils d'XP TOTAL nécessaires pour atteindre un niveau.
+        // Niveau 1 = 0 XP, Niveau 2 = 100 XP, Niveau 3 = 300 XP, etc.
+        const LEVEL_XP_THRESHOLDS = [
+            0, 100, 300, 600, 1000, 1500, 2200, 3000, 4000, 5000, // Niveaux 1-10
+            6500, 8000, 10000, 12500, 15000, 18000, 22000, 26000, 30000, 35000 // Niveaux 11-20
+            // ... vous pourrez étendre cette liste à l'infini
+        ];
+
+        // Base de données de toutes les quêtes possibles
+        const QUEST_DATABASE = {
+            daily: [
+                { id: 'd01', description: "Terminer 1 séance d'entraînement", type: 'complete_sessions', goal: 1, rewards: { xp: 50, coins: 10 } },
+                { id: 'd02', description: "Soulever un total de 5,000 kg", type: 'total_volume', goal: 5000, rewards: { xp: 75, coins: 15 } },
+                { id: 'd03', description: "Effectuer 100 répétitions au total", type: 'total_reps', goal: 100, rewards: { xp: 40, coins: 10 } },
+                { id: 'd04', description: "Enregistrer au moins 1500 calories", type: 'log_calories', goal: 1500, rewards: { xp: 30, coins: 5 } },
+                { id: 'd05', description: "Entraîner les pectoraux", type: 'train_muscle_group', group: 'pecs', goal: 1, rewards: { xp: 60, coins: 10 } },
+                { id: 'd06', description: "Entraîner le dos", type: 'train_muscle_group', group: 'dos', goal: 1, rewards: { xp: 60, coins: 10 } },
+                { id: 'd07', description: "Entraîner les jambes", type: 'train_muscle_group', group: 'jambes', goal: 1, rewards: { xp: 80, coins: 20 } },
+            ],
+            weekly: [
+                { id: 'w01', description: "Terminer 3 séances d'entraînement", type: 'complete_sessions', goal: 3, rewards: { xp: 200, coins: 50 } },
+                { id: 'w02', description: "Soulever un total de 25,000 kg", type: 'total_volume', goal: 25000, rewards: { xp: 250, coins: 75 } },
+                { id: 'w03', description: "Battre 2 records personnels (PR)", type: 'break_prs', goal: 2, rewards: { xp: 300, coins: 100 } },
+                { id: 'w04', description: "Effectuer 500 répétitions au total", type: 'total_reps', goal: 500, rewards: { xp: 150, coins: 40 } },
+                { id: 'w05', description: "Enregistrer un total de 10,000 calories", type: 'log_calories', goal: 10000, rewards: { xp: 100, coins: 30 } },
+            ]
+        };
+
         const REVERSE_RANK_POINTS_MAP = Object.fromEntries(Object.entries(RANK_POINTS_MAP).map(([name, points]) => [points, name]));
         const RANK_DESCRIPTIONS = {
             'Novice': "Chaque légende a un point de départ. Le vôtre est ici.",
@@ -2077,6 +2192,7 @@ const ACHIEVEMENTS_DATABASE = [
 
         // --- DATABASE & STATE MANAGEMENT ---
         let state = {
+            activeSide: 'workout',
             workouts: [],
             meals: [],
             workoutTags: [], 
@@ -2093,17 +2209,29 @@ const ACHIEVEMENTS_DATABASE = [
                 profilePicUrl: null,
                 coins: 100000,
                 inventory: {
-                    borders: ['b001'], // L'utilisateur possède la bordure par défaut
-                    titles: ['t001'],  // Et le titre par défaut
+                    borders: ['b001'],
+                    titles: ['t001'],
                     collectibles: []
                 },
                 equipped: {
                     border: 'b001',
                     title: 't001',
                     showcase: [null, null, null]
-                    },
-                    achievements: {}
-                    
+                },
+                achievements: {},
+
+                // --- CORRECTION ---
+                // Les objets leveling et quests sont maintenant À L'INTÉRIEUR de userProfile
+                leveling: {
+                    level: 1,
+                    xp: 0,
+                },
+                quests: {
+                    lastDailyReset: null,
+                    lastWeeklyReset: null,
+                    daily: [],
+                    weekly: []
+                }
             },
             shop: {
                 activeTab: 'box',
@@ -2211,6 +2339,171 @@ const ACHIEVEMENTS_DATABASE = [
         }
     }
 }
+
+ function addXP(amount) {
+            if (amount <= 0) return;
+
+            const leveling = state.userProfile.leveling;
+            leveling.xp += amount;
+
+            let levelUp = false;
+            // Boucle while pour gérer les montées de plusieurs niveaux d'un coup
+            while (leveling.level < LEVEL_XP_THRESHOLDS.length && leveling.xp >= LEVEL_XP_THRESHOLDS[leveling.level]) {
+                leveling.level++;
+                levelUp = true;
+            }
+
+            if (levelUp) {
+                showToast(`Niveau ${leveling.level} atteint !`, 'info');
+                // Ici, vous pourriez lancer des confettis ou une modale de félicitations plus tard
+            }
+            
+            // On s'assure que la barre de progression sur l'UI se met à jour
+            if(state.activePage === 'Accueil' || state.activePage === 'Profil') {
+                render();
+            }
+        }
+
+        function checkAndResetQuests() {
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+            
+            const dayOfWeek = now.getDay(); // Dimanche = 0, Lundi = 1, ...
+            const daysSinceLastSunday = dayOfWeek === 0 ? 0 : dayOfWeek;
+            const lastSunday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysSinceLastSunday).toISOString();
+
+            const quests = state.userProfile.quests;
+
+            const pickRandomQuests = (source, count, existingIds) => {
+                const available = source.filter(q => !existingIds.includes(q.id));
+                const shuffled = available.sort(() => 0.5 - Math.random());
+                return shuffled.slice(0, count).map(q => ({ id: q.id, progress: 0, completed: false }));
+            };
+
+            // Réinitialisation journalière
+            if (quests.lastDailyReset !== today) {
+                quests.lastDailyReset = today;
+                quests.daily = pickRandomQuests(QUEST_DATABASE.daily, 3, []); // On prend 3 quêtes journalières
+                console.log("Nouvelles quêtes journalières générées.");
+            }
+
+            // Réinitialisation hebdomadaire (le Dimanche à minuit)
+            if (quests.lastWeeklyReset !== lastSunday) {
+                quests.lastWeeklyReset = lastSunday;
+                quests.weekly = pickRandomQuests(QUEST_DATABASE.weekly, 3, []); // On prend 3 quêtes hedbomadaires
+                console.log("Nouvelles quêtes hebdomadaires générées.");
+            }
+        }
+
+        function updateQuestProgress(type, value, options = {}) {
+            const { quests } = state.userProfile;
+            const allQuests = [...quests.daily, ...quests.weekly];
+
+            allQuests.forEach(activeQuest => {
+                if (activeQuest.completed) return; // Ne pas mettre à jour une quête déjà terminée
+
+                const questInfo = QUEST_DATABASE.daily.find(q => q.id === activeQuest.id) || QUEST_DATABASE.weekly.find(q => q.id === activeQuest.id);
+
+                if (questInfo && questInfo.type === type) {
+                    // Logique spécifique pour les quêtes de groupe musculaire
+                    if(type === 'train_muscle_group' && questInfo.group !== options.muscleGroup) {
+                        return;
+                    }
+
+                    activeQuest.progress += value;
+
+                    if (activeQuest.progress >= questInfo.goal) {
+                        activeQuest.completed = true;
+                        activeQuest.progress = questInfo.goal; // On plafonne la progression
+                        showToast(`Quête terminée : ${questInfo.description}`, 'success');
+                        // Récompenses
+                        addXP(questInfo.rewards.xp);
+                        state.userProfile.coins += questInfo.rewards.coins;
+                    }
+                }
+            });
+        }
+
+        function openQuestsModal() {
+    const { daily, weekly } = state.userProfile.quests;
+
+    const renderQuestList = (quests, title) => {
+        if (!quests || quests.length === 0) return '';
+        return `
+            <h3 class="font-bold text-lg text-violet-300 mb-2">${title}</h3>
+            <div class="space-y-3">
+                ${quests.map(q => {
+                    const questInfo = QUEST_DATABASE.daily.find(qi => qi.id === q.id) || QUEST_DATABASE.weekly.find(qi => qi.id === q.id);
+                    if (!questInfo) return '';
+                    const progressPercent = (q.progress / questInfo.goal) * 100;
+                    return `
+                    <div class="glass-card p-3 rounded-lg ${q.completed ? 'opacity-50' : ''}">
+                        <p class="font-semibold text-sm">${questInfo.description}</p>
+                        <div class="flex items-center gap-2 mt-2">
+                            <div class="w-full bg-black/20 rounded-full h-1.5">
+                                <div class="bg-violet-500 h-1.5 rounded-full" style="width: ${progressPercent}%"></div>
+                            </div>
+                            ${q.completed ? `<i class="fa-solid fa-check text-green-400"></i>` : `<span class="text-xs font-mono text-gray-400">${Math.min(q.progress, questInfo.goal)}/${questInfo.goal}</span>`}
+                        </div>
+                    </div>`;
+                }).join('')}
+            </div>
+        `;
+    };
+
+    const modalContent = `
+    <div class="glass-card w-full max-w-md p-6 rounded-t-3xl border-none h-auto max-h-[85vh] flex flex-col">
+        <header class="flex justify-between items-center mb-4 flex-shrink-0">
+            <h2 class="text-2xl font-bold">Quêtes</h2>
+            <button class="close-modal w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">&times;</button>
+        </header>
+        <div class="flex-grow overflow-y-auto pr-2 scrollbar-hide space-y-6">
+            ${renderQuestList(daily, 'Quêtes Journalières')}
+            ${renderQuestList(weekly, 'Quêtes Hebdomadaires')}
+        </div>
+    </div>`;
+    showModal(modalContent);
+}
+
+function getExpPercentage() {
+    const { level, xp } = state.userProfile.leveling;
+    if (level >= LEVEL_XP_THRESHOLDS.length) return 100; // Niveau max
+
+    const currentLevelXP = LEVEL_XP_THRESHOLDS[level - 1];
+    const nextLevelXP = LEVEL_XP_THRESHOLDS[level];
+    const xpInLevel = xp - currentLevelXP;
+    const xpForLevel = nextLevelXP - currentLevelXP;
+
+    if (xpForLevel === 0) return 100;
+    return (xpInLevel / xpForLevel) * 100;
+}
+
+function getExpValues() {
+            const { level, xp } = state.userProfile.leveling;
+
+            // Gère le cas où l'utilisateur atteint le niveau maximum défini
+            if (level >= LEVEL_XP_THRESHOLDS.length) {
+                const lastLevelXP = LEVEL_XP_THRESHOLDS[level - 2] || 0;
+                const maxLevelXP = LEVEL_XP_THRESHOLDS[level - 1];
+                return {
+                    current: maxLevelXP - lastLevelXP,
+                    required: maxLevelXP - lastLevelXP,
+                    isMax: true
+                };
+            }
+
+            const currentLevelXP = LEVEL_XP_THRESHOLDS[level - 1]; // XP nécessaire pour commencer le niveau actuel
+            const nextLevelXP = LEVEL_XP_THRESHOLDS[level];   // XP nécessaire pour atteindre le niveau suivant
+
+            const xpInCurrentLevel = xp - currentLevelXP;
+            const xpForNextLevel = nextLevelXP - currentLevelXP;
+
+            return {
+                current: xpInCurrentLevel,
+                required: xpForNextLevel,
+                isMax: false
+            };
+        }
 
         function updateStreaks() {
             const today = new Date();
@@ -2377,6 +2670,13 @@ const ACHIEVEMENTS_DATABASE = [
                 ];
                 return easterEggs[Math.floor(Math.random() * easterEggs.length)];
             }
+        }
+
+        function formatXP(num) {
+            if (num < 1000) return num.toString();
+            if (num < 1000000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+            if (num < 1000000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+            return (num / 1000000000).toFixed(1).replace(/\.0$/, '') + 'B';
         }
 
         function closeAllDropdowns() {
@@ -3561,117 +3861,126 @@ function convertScoreToGrade(score) {
 
         // REMPLACEZ votre fonction finishWorkout existante par celle-ci
 function finishWorkout() {
-    const session = state.activeWorkoutSession;
-    if (!session) return;
+            const session = state.activeWorkoutSession;
+            if (!session) return;
 
-    if (playerTimer) clearInterval(playerTimer);
-    if (sessionDurationTimer) clearInterval(sessionDurationTimer);
-    playerTimer = null;
-    sessionDurationTimer = null;
+            if (playerTimer) clearInterval(playerTimer);
+            if (sessionDurationTimer) clearInterval(sessionDurationTimer);
+            playerTimer = null;
+            sessionDurationTimer = null;
 
-    const durationMs = Date.now() - session.startTime;
-    const bodyWeight = state.userGoals.bodyWeight;
-    
-    let newPrCount = 0;
-    let totalVolume = 0;
-    let totalReps = 0;
-    let totalSets = 0;
+            const durationMs = Date.now() - session.startTime;
+            const bodyWeight = state.userGoals.bodyWeight;
+            
+            let newPrCount = 0;
+            let totalVolume = 0;
+            let totalReps = 0;
+            let totalSets = 0;
+            const trainedMuscleGroups = new Set(); // Pour suivre les groupes musculaires entraînés
 
-    // ÉTAPE 1 : Analyser les performances et trouver les records
-    const processedPerformance = session.performance.map(perf => {
-        const exercise = getExerciseById(perf.exerciseId);
-        if (!perf.sets || perf.sets.length === 0) {
-            return { ...perf, bestSet: null, bestScoreInSession: 0, isNewPr: false };
-        }
-
-        totalSets += perf.sets.length;
-        perf.sets.forEach(set => {
-            totalVolume += (set.weight || 0) * (set.reps || 0);
-            totalReps += (set.reps || 0);
-        });
-        
-        const params = { type: exercise.type, poidsDuCorps: bodyWeight, coefficient: exercise.coefficient, pdcPercent: exercise.pdcPercent };
-
-        // **CORRECTION PRINCIPALE : Calcul de la meilleure série de la séance**
-        const bestSetInSession = perf.sets.reduce((best, current) => {
-            const bestScore = calculatePerformanceScore({ ...params, charge: best.weight, reps: best.reps });
-            const currentScore = calculatePerformanceScore({ ...params, charge: current.weight, reps: current.reps });
-            return currentScore > bestScore ? current : best;
-        });
-        const bestScoreInSession = calculatePerformanceScore({ ...params, charge: bestSetInSession.weight, reps: bestSetInSession.reps });
-
-        // Vérification du nouveau record (PR)
-        const currentStats = state.exerciseStats[perf.exerciseId] || { rankPr: { score: 0 }, allTimeBest: null };
-        const isNewPr = bestScoreInSession > (currentStats.rankPr.score || 0);
-
-        if (isNewPr) {
-            newPrCount++;
-            // Mettre à jour les stats de l'exercice avec le nouveau record
-            state.exerciseStats[perf.exerciseId] = {
-                ...currentStats,
-                rankPr: {
-                    score: bestScoreInSession,
-                    bestSet: bestSetInSession,
-                    dateAchieved: new Date().toISOString(),
-                    bodyWeightAtPR: bodyWeight
+            // --- ÉTAPE 1 : Analyser les performances (inchangé, mais on ajoute le tracking des muscles) ---
+            const processedPerformance = session.performance.map(perf => {
+                const exercise = getExerciseById(perf.exerciseId);
+                // On ajoute les groupes musculaires de l'exercice au Set
+                if (exercise && exercise.groups) {
+                    Object.keys(exercise.groups).forEach(group => trainedMuscleGroups.add(group));
                 }
+
+                if (!perf.sets || perf.sets.length === 0) {
+                    return { ...perf, bestSet: null, bestScoreInSession: 0, isNewPr: false };
+                }
+
+                totalSets += perf.sets.length;
+                perf.sets.forEach(set => {
+                    totalVolume += (set.weight || 0) * (set.reps || 0);
+                    totalReps += (set.reps || 0);
+                });
+                
+                const params = { type: exercise.type, poidsDuCorps: bodyWeight, coefficient: exercise.coefficient, pdcPercent: exercise.pdcPercent };
+
+                const bestSetInSession = perf.sets.reduce((best, current) => {
+                    const bestScore = calculatePerformanceScore({ ...params, charge: best.weight, reps: best.reps });
+                    const currentScore = calculatePerformanceScore({ ...params, charge: current.weight, reps: current.reps });
+                    return currentScore > bestScore ? current : best;
+                });
+                const bestScoreInSession = calculatePerformanceScore({ ...params, charge: bestSetInSession.weight, reps: bestSetInSession.reps });
+
+                const currentStats = state.exerciseStats[perf.exerciseId] || { rankPr: { score: 0 }, allTimeBest: null };
+                const isNewPr = bestScoreInSession > (currentStats.rankPr.score || 0);
+
+                if (isNewPr) {
+                    newPrCount++;
+                    state.exerciseStats[perf.exerciseId] = {
+                        ...currentStats,
+                        rankPr: { score: bestScoreInSession, bestSet: bestSetInSession, dateAchieved: new Date().toISOString(), bodyWeightAtPR: bodyWeight }
+                    };
+                }
+                
+                const currentAllTimeBestSet = currentStats.allTimeBest?.bestSet || { weight: 0, reps: 0 };
+                const absoluteScoreCurrent = calculateAbsolutePerformance({ ...params, charge: currentAllTimeBestSet.weight, reps: currentAllTimeBestSet.reps });
+                const absoluteScoreNew = calculateAbsolutePerformance({ ...params, charge: bestSetInSession.weight, reps: bestSetInSession.reps });
+
+                if(absoluteScoreNew > absoluteScoreCurrent) {
+                    state.exerciseStats[perf.exerciseId].allTimeBest = { bestSet: bestSetInSession, date: new Date().toISOString() };
+                }
+
+                if (bestScoreInSession > 9000) updateAchievementProgress('over_9000', bestScoreInSession, 'max');
+                const rmValues = calculate1RM(bestSetInSession, exercise);
+                if (exercise.id === 'ex001') updateAchievementProgress('bench_press_club', rmValues.total1RM, 'max');
+                if (exercise.id === 'ex035') updateAchievementProgress('squat_club', rmValues.total1RM, 'max');
+                if (exercise.id === 'ex021') updateAchievementProgress('deadlift_club', rmValues.total1RM, 'max');
+                
+                return { ...perf, bestSet: bestSetInSession, bestScoreInSession, isNewPr };
+            });
+            
+            // --- ÉTAPE 2 : Mettre à jour les succès (inchangé) ---
+            updateAchievementProgress('total_volume', totalVolume, 'increment');
+            updateAchievementProgress('single_session_volume', totalVolume, 'max');
+            // ... autres appels updateAchievementProgress ...
+            
+            // --- NOUVELLE ÉTAPE 2.5 : Calculer les récompenses de la séance et mettre à jour les quêtes ---
+            const baseXP = 50;
+const baseCoins = 10;
+// CORRECTION : Remplacer "workout.exercises" par "session.workout.exercises"
+const xpPerExercise = session.workout.exercises.length * 5; 
+const xpPerPR = newPrCount * 25;
+            const coinsPerPR = newPrCount * 10;
+            const volumeBonus = Math.floor(totalVolume / 2000); // 1 XP et 1 pièce tous les 2000kg
+            const timeBonus = Math.floor(durationMs / 60000) * 0.5; // 0.5 XP par minute
+
+            const totalXP = Math.round(baseXP + xpPerExercise + xpPerPR + volumeBonus + timeBonus);
+            const totalCoins = baseCoins + coinsPerPR + volumeBonus;
+            
+            addXP(totalXP);
+            state.userProfile.coins += totalCoins;
+            
+            // Mise à jour des quêtes
+            updateQuestProgress('complete_sessions', 1);
+            updateQuestProgress('total_volume', totalVolume);
+            updateQuestProgress('total_reps', totalReps);
+            if (newPrCount > 0) {
+                updateQuestProgress('break_prs', newPrCount);
+            }
+            trainedMuscleGroups.forEach(group => {
+                updateQuestProgress('train_muscle_group', 1, { muscleGroup: group });
+            });
+
+
+            // --- ÉTAPE 3 & 4 (inchangées) ---
+            const sessionReport = {
+                sessionId: generateId(), workoutId: session.workout.id, date: new Date().toISOString(), duration: durationMs,
+                performance: processedPerformance,
+                rewards: { xp: totalXP, coins: totalCoins } // On sauvegarde les récompenses
             };
+            state.sessionHistory.push(sessionReport);
+
+            const event = state.calendarEvents.find(e => e.id === session.eventId);
+            if (event) event.completed = true;
+            
+            updateStreaks();
+            state.activeWorkoutSession = null;
+            navigate('WorkoutSummary', { sessionId: sessionReport.sessionId });
         }
-        
-        // Mise à jour de la meilleure performance brute (sans ratio poids de corps)
-        const currentAllTimeBestSet = currentStats.allTimeBest?.bestSet || { weight: 0, reps: 0 };
-        const absoluteScoreCurrent = calculateAbsolutePerformance({ ...params, charge: currentAllTimeBestSet.weight, reps: currentAllTimeBestSet.reps });
-        const absoluteScoreNew = calculateAbsolutePerformance({ ...params, charge: bestSetInSession.weight, reps: bestSetInSession.reps });
-
-        if(absoluteScoreNew > absoluteScoreCurrent) {
-            state.exerciseStats[perf.exerciseId].allTimeBest = {
-                bestSet: bestSetInSession,
-                date: new Date().toISOString()
-            };
-        }
-
-        // Logique pour les succès spécifiques
-        if (bestScoreInSession > 9000) updateAchievementProgress('over_9000', bestScoreInSession, 'max');
-        const rmValues = calculate1RM(bestSetInSession, exercise);
-        if (exercise.id === 'ex001') updateAchievementProgress('bench_press_club', rmValues.total1RM, 'max');
-        if (exercise.id === 'ex035') updateAchievementProgress('squat_club', rmValues.total1RM, 'max');
-        if (exercise.id === 'ex021') updateAchievementProgress('deadlift_club', rmValues.total1RM, 'max');
-        
-        return { 
-            ...perf, 
-            bestSet: bestSetInSession, 
-            bestScoreInSession, 
-            isNewPr 
-        };
-    });
-    
-    // ÉTAPE 2 : Mettre à jour les succès globaux
-    updateAchievementProgress('total_volume', totalVolume, 'increment');
-    updateAchievementProgress('single_session_volume', totalVolume, 'max');
-    updateAchievementProgress('total_reps', totalReps, 'increment');
-    updateAchievementProgress('total_sets', totalSets, 'increment');
-    updateAchievementProgress('total_sessions_completed', 1, 'increment');
-    updateAchievementProgress('total_training_time', Math.round(durationMs / 3600000), 'increment'); // en heures
-    if (newPrCount > 0) updateAchievementProgress('pr_breaker', newPrCount, 'increment');
-    
-    // ÉTAPE 3 : Sauvegarder le rapport de session
-    const sessionReport = {
-        sessionId: generateId(),
-        workoutId: session.workout.id,
-        date: new Date().toISOString(),
-        duration: durationMs,
-        performance: processedPerformance
-    };
-    state.sessionHistory.push(sessionReport);
-
-    // ÉTAPE 4 : Nettoyer et naviguer
-    const event = state.calendarEvents.find(e => e.id === session.eventId);
-    if (event) event.completed = true;
-    
-    updateStreaks();
-    state.activeWorkoutSession = null;
-    navigate('WorkoutSummary', { sessionId: sessionReport.sessionId });
-}
 
         // --- CORE APP LOGIC ---
         const pageContainer = document.getElementById('page-container');
@@ -3717,6 +4026,7 @@ function finishWorkout() {
 
             const template = templates[state.activePage] || templates.Accueil;
             pageContainer.innerHTML = template(state.currentPageParams);
+            pageContainer.classList.remove('page-fade-out');
             navContainer.innerHTML = templates.BottomNav();
 
             // Restore scroll position for shop AFTER render and small delay
@@ -4114,25 +4424,33 @@ function renderCollectionList() {
 
         const templates = {
             Accueil: () => {
+                const isWorkout = state.activeSide === 'workout';
+
+                // On met à jour la classe du conteneur principal pour le CSS
+                document.getElementById('app-container').className = `app-container relative w-full max-w-md h-[850px] max-h-[90vh] rounded-[40px] shadow-2xl overflow-hidden border-2 border-gray-800 ${isWorkout ? 'workout-active' : 'nutrition-active'}`;
+
+                // --- LOGIQUE POUR LE CÔTÉ WORKOUT ---
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
-                const todayStr = formatDateToYYYYMMDD(today);
-                
-                const nextWorkoutEvent = state.calendarEvents.find(event => event.type === 'workout' && event.date === todayStr && !event.completed);
+                const nextWorkoutEvent = state.calendarEvents.find(event => event.type === 'workout' && new Date(event.date) >= today && !event.completed);
                 let workoutTitle = 'Repos';
-                let isTodayWorkout = !!nextWorkoutEvent;
+                let isTodayWorkout = !!nextWorkoutEvent && new Date(nextWorkoutEvent.date).toDateString() === new Date().toDateString();
+
                 if (isTodayWorkout) {
                     workoutTitle = nextWorkoutEvent.title;
                 } else {
-                    const allTodayWorkouts = state.calendarEvents.filter(e => e.type === 'workout' && e.date === todayStr);
+                    const allTodayWorkouts = state.calendarEvents.filter(e => e.type === 'workout' && formatDateToYYYYMMDD(new Date(e.date)) === formatDateToYYYYMMDD(today));
                     if (allTodayWorkouts.length > 0 && allTodayWorkouts.every(e => e.completed)) {
                         workoutTitle = "Séances terminées !";
                     }
                 }
+                const upcomingWorkouts = state.calendarEvents.filter(event => event.type === 'workout' && new Date(event.date) >= today && !event.completed).sort((a,b) => new Date(a.date) - new Date(b.date));
+                const weeklyStats = getWeeklyStats();
 
+                // --- LOGIQUE POUR LE CÔTÉ NUTRITION ---
+                const todayStr = formatDateToYYYYMMDD(new Date());
                 const todaysMealsEvents = state.calendarEvents.filter(e => e.type === 'meal' && e.date === todayStr);
                 const validatedMealsEvents = todaysMealsEvents.filter(e => e.validated);
-                
                 const consumedMacros = validatedMealsEvents.reduce((acc, event) => {
                     const meal = state.meals.find(m => m.id === event.refId);
                     if (meal) {
@@ -4141,7 +4459,6 @@ function renderCollectionList() {
                     }
                     return acc;
                 }, { calories: 0, protein: 0 });
-                
                 const potentialMacros = todaysMealsEvents.reduce((acc, event) => {
                      const meal = state.meals.find(m => m.id === event.refId);
                     if (meal) {
@@ -4151,54 +4468,62 @@ function renderCollectionList() {
                     return acc;
                 }, { calories: 0, protein: 0 });
 
-                const upcomingWorkouts = state.calendarEvents.filter(event => event.type === 'workout' && new Date(event.date) >= today && !event.completed).sort((a,b) => new Date(a.date) - new Date(b.date));
-                
-                const weeklyStats = getWeeklyStats();
-
                 return `
-                <div class="p-6 pb-28 h-full flex flex-col">
-                    <div class="absolute top-20 right-[-100px] w-[450px] h-[450px] bg-violet-600/10 rounded-full blur-3xl -z-10"></div>
+                <div class="p-6 pb-28 h-full flex flex-col page-transition">
+                    <div class="absolute top-20 right-[-100px] w-[450px] h-[450px] ${isWorkout ? 'bg-violet-600/10' : 'bg-green-600/10'} rounded-full blur-3xl -z-10"></div>
                     
                     <header class="pt-4 flex justify-between items-center flex-shrink-0">
-                        <h1 class="text-3xl font-bold tracking-tighter">FitFlow</h1>
+                        <div>
+                            <div class="flex items-center gap-3">
+                                <h1 class="text-3xl font-bold tracking-tighter">FitFlow</h1>
+                                <button id="open-guide-modal" class="text-gray-500 hover:text-white transition-colors">
+                                    <i class="fa-solid fa-circle-question text-2xl"></i>
+                                </button>
+                            </div>
+
+                            <div class="flex items-center gap-2 mt-1">
+                                <span class="font-bold text-xs bg-violet-500/20 text-violet-300 px-2 py-1 rounded-md whitespace-nowrap">
+                                    Niv. ${state.userProfile.leveling.level}
+                                </span>
+                                
+                                <div class="translate-y-1">
+                                    <div class="w-20 h-1.5 bg-black/20 rounded-full">
+                                        <div class="bg-violet-500 h-1.5 rounded-full" style="width: ${getExpPercentage()}%"></div>
+                                    </div>
+                                    <div class="w-20 text-center -mt-1">
+                                        <span class="text-[9px] text-gray-400 font-semibold tracking-tighter leading-none">
+                                            ${(() => {
+                                                const exp = getExpValues();
+                                                return exp.isMax ? 'MAX' : `${formatXP(exp.current)} / ${formatXP(exp.required)} XP`;
+                                            })()}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                         
                         <div class="flex-grow flex justify-center">
-                             ${state.viewFilter === 'workout' ? `
-                                <button data-action="open-streak-info" data-type="workout" class="flex items-center gap-2 text-center transition-transform hover:scale-110">
-                                    <i class="fa-solid fa-fire-flame-curved text-2xl text-orange-400"></i>
-                                    <span class="text-2xl font-bold">${state.streaks.workout.count}</span>
-                                </button>
-                                ` : `
-                                <button data-action="open-streak-info" data-type="nutrition" class="flex items-center gap-2 ...">
-    <i class="fa-solid fa-fire-flame-curved text-2xl text-green-400"></i>
-    <span class="text-2xl font-bold">${state.streaks.nutrition.count}</span>
-</button>
-                                `
-                            }
+                             <button data-action="open-streak-info" data-type="${state.activeSide}" class="flex items-center gap-2 transition-transform hover:scale-110">
+                                <i class="fa-solid fa-fire-flame-curved text-2xl ${state.activeSide === 'workout' ? 'text-orange-400' : 'text-green-400'}"></i>
+                                <span class="text-2xl font-bold">${state.activeSide === 'workout' ? state.streaks.workout.count : state.streaks.nutrition.count}</span>
+                            </button>
                         </div>
 
-                        <div class="flex items-center gap-4">
-                            <div class="toggle-switch w-28">
-                                <div class="slider" style="transform: translateX(${state.viewFilter === 'workout' ? '0%' : '100%'});"></div>
-                                <button data-filter="workout"><i class="fa-solid fa-dumbbell text-lg"></i></button>
-                                <button data-filter="meal"><i class="fa-solid fa-utensils text-lg"></i></button>
+                        <div class="relative">
+                            <div class="flex items-center gap-5">
+                                <button data-navigate="Shop"><i class="fa-solid fa-store text-2xl text-gray-300"></i></button>
+                                <button id="open-quests-modal"><i class="fa-solid fa-scroll text-2xl text-gray-300"></i></button>
+                                <button data-navigate="Profil"><i class="fa-solid fa-user text-2xl text-gray-300"></i></button>
                             </div>
-                            <button data-navigate="Shop" class="text-gray-300 hover:text-white transition-colors">
-            <i class="fa-solid fa-store text-xl"></i>
-        </button>
-                            <button data-navigate="Profil"><i class="fa-solid fa-user text-xl text-gray-300 cursor-pointer"></i></button>
                         </div>
                     </header>
                     
-                    ${(state.viewFilter === 'workout' && state.streaks.workout.lastChance)
-                        ? `<div class="text-center text-yellow-400 font-semibold animate-pulse -mt-2 mb-2 text-sm">Dernière chance !</div>`
-                        : ''
-                    }
+                    <div class="flex-grow flex flex-col justify-between mt-6 space-y-4">
                     
-                    ${state.viewFilter === 'workout' ? `
-                    <div class="flex-grow flex flex-col justify-between mt-4 space-y-4">
-                        <div>
+                    ${isWorkout ? `
+                    <div>
                             <p class="text-sm font-semibold text-gray-400 uppercase">SÉANCE DU JOUR</p>
+                            ${(state.streaks.workout.lastChance) ? `<p class="text-xs text-yellow-400 font-semibold animate-pulse">Dernière chance pour la série !</p>` : ''}
                             <p class="text-4xl font-extrabold text-white leading-tight mt-1 truncate-ellipsis" title="${workoutTitle}">${truncateText(workoutTitle, 20)}</p>
                              <div class="text-left mt-2">
                                 <button id="start-workout-btn" data-event-id="${nextWorkoutEvent?.id || ''}" class="text-violet-400 font-semibold text-lg group ${!isTodayWorkout ? 'opacity-30 cursor-not-allowed' : ''}">
@@ -4223,7 +4548,12 @@ function renderCollectionList() {
                         </div>
                         
                          <div class="glass-card p-6 rounded-3xl flex flex-col flex-grow min-h-0">
-                            <h2 class="text-lg font-bold mb-4 flex-shrink-0">Prochaines Séances</h2>
+                            <div class="flex items-center gap-3 mb-4">
+                                <h2 class="text-lg font-bold">Prochaines Séances</h2>
+                                <button data-navigate="Calendrier" class="text-gray-400 hover:text-white transition-colors">
+                                    <i class="fa-solid fa-calendar-days text-xl"></i>
+                                </button>
+                            </div>
                             <div class="space-y-5 overflow-y-auto scrollbar-hide flex-grow">
                                 ${upcomingWorkouts.length > 0 ? upcomingWorkouts.slice(0, 4).map(event => {
                                     const eventDate = new Date(event.date + 'T00:00:00');
@@ -4244,24 +4574,27 @@ function renderCollectionList() {
                             </div>
                             ${upcomingWorkouts.length > 4 ? `<button data-navigate="Calendrier" class="w-full text-center pt-4 mt-auto border-t border-white/10 text-sm font-semibold text-gray-400 hover:text-white flex-shrink-0">Afficher plus de séances</button>` : ''}
                          </div>
-                    </div>
                     ` : `
-                    <div class="flex-grow flex flex-col justify-between mt-4 space-y-4">
-                        <div class="grid grid-cols-2 gap-4">
+                    <div class="grid grid-cols-2 gap-4">
                             <div class="glass-card p-4 rounded-2xl">
-        <p class="text-sm text-gray-400">Calories</p>
-        <p class="text-2xl font-bold ${consumedMacros.calories >= state.userGoals.calories ? 'text-green-400' : ''}">${consumedMacros.calories.toFixed(0)} <span class="text-lg text-gray-400">/ ${state.userGoals.calories}</span></p>
-        <p class="text-xs text-gray-500">Potentiel: ${potentialMacros.calories.toFixed(0)} kcal</p>
-    </div>
-     <div class="glass-card p-4 rounded-2xl">
-        <p class="text-sm text-gray-400">Protéines</p>
-        <p class="text-2xl font-bold ${consumedMacros.protein >= state.userGoals.protein ? 'text-green-400' : ''}">${consumedMacros.protein.toFixed(1)} <span class="text-lg text-gray-400">/ ${state.userGoals.protein}g</span></p>
-        <p class="text-xs text-gray-500">Potentiel: ${potentialMacros.protein.toFixed(1)} g</p>
-    </div>
+                                <p class="text-sm text-gray-400">Calories</p>
+                                <p class="text-2xl font-bold ${consumedMacros.calories >= state.userGoals.calories ? 'text-green-400' : ''}">${consumedMacros.calories.toFixed(0)} <span class="text-lg text-gray-400">/ ${state.userGoals.calories}</span></p>
+                                <p class="text-xs text-gray-500">Potentiel: ${potentialMacros.calories.toFixed(0)} kcal</p>
+                            </div>
+                             <div class="glass-card p-4 rounded-2xl">
+                                <p class="text-sm text-gray-400">Protéines</p>
+                                <p class="text-2xl font-bold ${consumedMacros.protein >= state.userGoals.protein ? 'text-green-400' : ''}">${consumedMacros.protein.toFixed(1)} <span class="text-lg text-gray-400">/ ${state.userGoals.protein}g</span></p>
+                                <p class="text-xs text-gray-500">Potentiel: ${potentialMacros.protein.toFixed(1)} g</p>
+                            </div>
                         </div>
                         <div class="glass-card p-6 rounded-3xl flex flex-col flex-grow min-h-0">
                             <div class="flex justify-between items-center mb-4">
-                                <h2 class="text-lg font-bold flex-shrink-0">Repas du jour</h2>
+                                <div class="flex items-center gap-3">
+                                    <h2 class="text-lg font-bold">Repas du jour</h2>
+                                    <button data-navigate="Calendrier" class="text-gray-400 hover:text-white transition-colors">
+                                        <i class="fa-solid fa-calendar-days text-xl"></i>
+                                    </button>
+                                </div>
                                 <button id="quick-add-food-btn" class="text-green-400 font-semibold text-sm group">
                                     Ajout Rapide <i class="fa-solid fa-plus ml-1"></i>
                                 </button>
@@ -4275,90 +4608,21 @@ function renderCollectionList() {
                                 `).join('') : `<div class="h-full flex items-center justify-start pt-4"><p class="text-sm text-gray-500">Aucun repas planifié aujourd'hui.</p></div>`}
                             </div>
                         </div>
-                    </div>
                     `}
+                    </div>
                 </div>`;
             },
             
             Dashboard: () => {
-                const stats = getDashboardStats();
-                const insights = getAdvancedInsights();
-                const performedExercises = EXERCISE_DATABASE.filter(exo => state.exerciseStats[exo.id]);
-                
-                if (!state.selectedChartExerciseId && performedExercises.length > 0) {
-                    state.selectedChartExerciseId = performedExercises[0].id;
-                }
-                
-                const selectedExercise = getExerciseById(state.selectedChartExerciseId);
-                const prStats = selectedExercise ? state.exerciseStats[selectedExercise.id] : null;
-                const rmValues = prStats && prStats.allTimeBest ? calculate1RM(prStats.allTimeBest.bestSet, selectedExercise) : { total1RM: 0, lest1RM: 0 };
-
+                // Ceci est maintenant le placeholder pour les stats de NUTRITION
                 return `
-                <div class="p-6 pb-28">
-                    <header class="pt-4 mb-6"><h1 class="text-3xl font-bold">Tableau de Bord</h1></header>
-
-                    <div class="grid grid-cols-3 gap-3 mb-8">
-                        <button data-action="open-sessions-details" class="glass-card p-3 rounded-xl text-center hover:bg-white/10 transition-colors">
-                            <p class="text-xs text-gray-400">Séances</p>
-                            <p class="text-2xl font-bold">${stats.totalSessions}</p>
-                        </button>
-                        <button data-action="open-time-details" class="glass-card p-3 rounded-xl text-center hover:bg-white/10 transition-colors">
-                            <p class="text-xs text-gray-400">Temps Total</p>
-                            <p class="text-xl font-bold">${stats.totalTime}</p>
-                        </button>
-                        <button data-action="open-volume-details" class="glass-card p-3 rounded-xl text-center hover:bg-white/10 transition-colors">
-                            <p class="text-xs text-gray-400">Volume</p>
-                            <p class="text-xl font-bold">${stats.totalVolume}</p>
-                        </button>
-                    </div>
-
-                    <div class="glass-card p-4 rounded-2xl mb-6">
-                        <div class="flex justify-between items-center mb-4">
-                            <h2 class="text-xl font-bold">Analyse de Progression</h2>
-                            <button data-action="open-dashboard-help" class="text-gray-500 hover:text-violet-400"><i class="fa-solid fa-circle-question text-xl"></i></button>
-                        </div>
-                        
-                        <div class="relative custom-select-container mb-4">
-                            <button id="exercise-select-button" class="custom-select-button">
-                                <span class="font-semibold">${selectedExercise ? selectedExercise.name : 'Choisir un exercice'}</span>
-                                <i class="fa-solid fa-chevron-down text-gray-500"></i>
-                            </button>
-                            <div id="exercise-select-options" class="custom-select-options">
-                                ${performedExercises.length > 0 ? performedExercises.map(exo => `<div class="custom-select-option" data-value="${exo.id}">${exo.name}</div>`).join('') : '<div class="p-3 text-gray-500">Aucun exercice pratiqué</div>'}
-                            </div>
-                        </div>
-
-                        <div class="h-56 mb-4"><canvas id="progression-chart"></canvas></div>
-                        
-                        ${selectedExercise && selectedExercise.type === 'bodyweight' ? `
-                            <div class="grid grid-cols-2 gap-3 text-center">
-                                <div><p class="text-sm font-semibold text-gray-400">1RM Lest Estimé</p><p class="text-3xl font-bold text-violet-400">${formatVolume(rmValues.lest1RM)}</p></div>
-                                <div><p class="text-sm font-semibold text-gray-400">1RM Charge Totale</p><p class="text-lg font-bold">${formatVolume(rmValues.total1RM)}</p></div>
-                            </div>
-                        ` : `
-                            <div class="text-center">
-                                <p class="text-sm font-semibold text-gray-400">1-Rep Max (1RM) Estimé</p>
-                                <p class="text-5xl font-bold text-violet-400">${formatVolume(rmValues.total1RM)}</p>
-                            </div>
-                        `}
-                    </div>
-
-                    <div class="grid grid-cols-2 gap-4">
-                         <div class="glass-card p-4 rounded-xl">
-                             <p class="font-bold text-sm mb-2">⚡ Vos Insights</p>
-                             <p class="text-xs text-gray-300">Jour fétiche : <span class="font-bold text-white">${insights.bestDay}</span></p>
-                             <p class="text-xs text-gray-300">Focus sur : <span class="font-bold text-white">${insights.mostTrainedGroup}</span></p>
-                         </div>
-                         <button id="show-history-btn" class="glass-card p-4 rounded-xl flex flex-col justify-center items-center text-center hover:bg-white/10">
-                            <i class="fa-solid fa-clock-rotate-left text-2xl mb-2"></i>
-                            <p class="font-bold text-sm">Historique complet</p>
-                         </button>
-                    </div>
+                <div class="p-6 pb-28 h-full flex flex-col items-center justify-center text-center">
+                    <i class="fa-solid fa-chart-pie text-6xl text-gray-600 mb-4"></i>
+                    <h1 class="text-3xl font-bold">Statistiques Nutrition</h1>
+                    <p class="text-gray-400 mt-2">Cette section est en cours de développement.<br>Bientôt, vous pourrez analyser vos macros, votre FitScore moyen et bien plus !</p>
                 </div>
                 `;
             },
-
- // --- REMPLACEZ COMPLÈTEMENT VOTRE FONCTION templates.Shop PAR CETTE VERSION CORRIGÉE ---
 
 Shop: () => {
     const tabs = [
@@ -4927,26 +5191,30 @@ Shop: () => {
                     const date = new Date(year, month, day);
                     date.setHours(0,0,0,0);
                     const dateStr = formatDateToYYYYMMDD(date);
-                    const eventsOnDay = state.calendarEvents.filter(e => e.date === dateStr && e.type === state.viewFilter);
+                    
+                    // Affiche les événements en fonction du mode actif
+                    const eventsOnDay = state.calendarEvents.filter(e => e.date === dateStr && e.type === (state.activeSide === 'workout' ? 'workout' : 'meal'));
+                    
                     const isToday = date.getTime() === today.getTime();
                     const isPast = date < today;
 
                     daysHtml += `
                         <div class="calendar-day ${isPast ? 'past-day' : ''} text-center py-2 rounded-lg transition-colors ${eventsOnDay.length > 0 && !isPast ? 'cursor-pointer' : ''} ${isToday ? 'border-2 border-white/50' : 'border-t border-gray-700/50'}" data-date="${dateStr}">
-        <span class="${isToday ? 'text-violet-300 font-bold rounded-full w-6 h-6 inline-flex items-center justify-center' : ''}">${day}</span>
-        <div class="flex justify-center items-center gap-1 h-4 mt-1">
-            ${eventsOnDay.map(e => {
-                const color = e.type === 'workout' ? 'var(--workout-color)' : 'var(--meal-color)';
-                return `<div class="event-dot w-1.5 h-1.5 rounded-full" style="background-color: ${color}"></div>`
-            }).join('')}
-        </div>
-    </div>`;
+                            <span class="${isToday ? 'text-violet-300 font-bold rounded-full w-6 h-6 inline-flex items-center justify-center' : ''}">${day}</span>
+                            <div class="flex justify-center items-center gap-1 h-4 mt-1">
+                                ${eventsOnDay.map(e => {
+                                    const color = e.type === 'workout' ? 'var(--workout-color)' : 'var(--meal-color)';
+                                    return `<div class="event-dot w-1.5 h-1.5 rounded-full" style="background-color: ${color}"></div>`
+                                }).join('')}
+                            </div>
+                        </div>`;
                 }
                 
                 const monthYearString = displayDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
                 const capitalizedMonthYear = monthYearString.charAt(0).toUpperCase() + monthYearString.slice(1);
                 
-                const plannerItems = state.viewFilter === 'workout' 
+                // Affiche les modèles de séances ou de repas en fonction du mode actif
+                const plannerItems = state.activeSide === 'workout' 
                     ? state.workouts.map(w => ({...w, itemType: 'workout'}))
                     : state.meals.filter(m => !m.isQuickAdd).map(m => ({...m, itemType: 'meal'}));
 
@@ -4954,11 +5222,6 @@ Shop: () => {
                     <div class="p-6 h-full flex flex-col pb-28">
                         <header class="pt-4 mb-4 flex justify-between items-center flex-shrink-0">
                             <h1 class="text-3xl font-bold">Planifier</h1>
-                             <div class="toggle-switch w-28">
-                                <div class="slider" style="transform: translateX(${state.viewFilter === 'workout' ? '0%' : '100%'});"></div>
-                                <button data-filter="workout"><i class="fa-solid fa-dumbbell text-lg"></i></button>
-                                <button data-filter="meal"><i class="fa-solid fa-utensils text-lg"></i></button>
-                            </div>
                         </header>
                         
                         <div id="story-container-wrapper" class="h-32 flex-shrink-0 relative">
@@ -4983,7 +5246,7 @@ Shop: () => {
                                     `
                                 }).join('') :  
                                 `<div class="w-full text-center text-gray-500 text-sm flex items-center justify-center">
-                                    <span>Aucun ${state.viewFilter === 'workout' ? 'modèle de séance' : 'repas'} créé.</span>
+                                    <span>Aucun ${state.activeSide === 'workout' ? 'modèle de séance' : 'repas'} créé.</span>
                                 </div>`
                                 }
                             </div>
@@ -5019,6 +5282,9 @@ Shop: () => {
                                 <i class="fa-solid fa-circle-question text-2xl"></i>
                             </button>
                         </div>
+                        <button data-action="open-dashboard-modal" class="text-gray-300 hover:text-white transition-colors">
+                            <i class="fa-solid fa-chart-line text-2xl"></i>
+                        </button>
                     </header>
                     
                     <div class="grid grid-cols-2 gap-4 mb-6">
@@ -5199,6 +5465,16 @@ Profil: () => {
     </div>
     `;
 },
+
+Social: () => {
+                return `
+                <div class="p-6 pb-28 h-full flex flex-col items-center justify-center text-center">
+                    <i class="fa-solid fa-users text-6xl text-gray-600 mb-4"></i>
+                    <h1 class="text-3xl font-bold">Social</h1>
+                    <p class="text-gray-400 mt-2">Les fonctionnalités sociales arrivent bientôt !<br>Amis, classements, défis et bien plus.</p>
+                </div>
+                `;
+            },
 
 // Remplacez ce modèle
 Achievements: () => {
@@ -5402,28 +5678,55 @@ Achievements: () => {
     `;
 },
 
-            BottomNav: () => {
-                const navItems = [ 
-                    { id: 'Accueil', icon: 'fa-house' }, 
-                    { id: 'Workouts', icon: 'fa-dumbbell' }, 
-                    { id: 'Repas', icon: 'fa-utensils' },
-                    { id: 'Calendrier', icon: 'fa-calendar-days' },
-                    { id: 'Dashboard', icon: 'fa-chart-line' }, // Onglet Tableau de Bord ajouté
-                    { id: 'Stats', icon: 'fa-ranking-star' } // Onglet Mes Rangs
-                ];
+BottomNav: () => {
+                const isWorkout = state.activeSide === 'workout';
+                
+                // --- Définition des icônes ---
+                const homeIcon = { id: 'Accueil', icon: 'fa-house' };
+                // L'icône de la bibliothèque est maintenant la même pour les deux modes
+                const libraryIcon = isWorkout 
+                    ? { id: 'Workouts', icon: 'fa-book-bookmark' } 
+                    : { id: 'Repas', icon: 'fa-book-bookmark' }; 
+                
+                // CORRECTION ICI : Remplacement du deuxième '?' par un ':'
+                const contextualIcon = isWorkout
+                    ? { id: 'Stats', icon: 'fa-ranking-star' } 
+                    : { id: 'Dashboard', icon: 'fa-chart-pie' };
+                
+                // La nouvelle icône Sociale
+                const socialIcon = { id: 'Social', icon: 'fa-users' };
+
+                const renderNavItem = (item) => `
+                    <button data-navigate="${item.id}" class="bottom-nav-item relative flex flex-col items-center justify-center gap-1 w-16 h-full transition-colors ${state.activePage === item.id ? 'active' : ''}">
+                        <i class="fa-solid ${item.icon} text-xl text-gray-400"></i>
+                    </button>
+                `;
+
                 return `
-                    <div class="glass-card flex justify-around items-center h-full rounded-full">
-                        ${navItems.map(item => `
-                            <button data-navigate="${item.id}" class="bottom-nav-item relative flex flex-col items-center justify-center gap-1 w-16 h-full transition-colors ${state.activePage === item.id ? 'active' : ''}">
-                                <i class="fa-solid ${item.icon} text-xl text-gray-400"></i>
-                            </button>
-                        `).join('')}
+                    <div class="glass-card flex justify-around items-center h-full rounded-full relative">
+                        <div class="flex justify-around flex-1">
+                            ${renderNavItem(homeIcon)}
+                            ${renderNavItem(libraryIcon)}
+                        </div>
+                        
+                        <div class="w-20"></div>
+
+                        <div class="flex justify-around flex-1">
+                            ${renderNavItem(contextualIcon)}
+                            ${renderNavItem(socialIcon)}
+                        </div>
+                        
+                        <button id="flow-switcher" title="Changer de mode">
+                            <div class="icon-wrapper workout-icon"><i class="fa-solid fa-dumbbell text-2xl text-white"></i></div>
+                            <div class="icon-wrapper nutrition-icon"><i class="fa-solid fa-utensils text-2xl text-white"></i></div>
+                        </button>
                     </div>
                 `;
             }
-        };
+            }
+            
         
-       function setupCalendarDragAndDrop() {
+        function setupCalendarDragAndDrop() {
             const storyContainer = document.getElementById('story-container');
             if (!storyContainer) return;
 
@@ -5582,7 +5885,19 @@ function setupEditorDragAndDrop(containerId, itemsArray) {
         
         // --- EVENT LISTENERS & DOM MANIPULATION ---
         const mainClickHandler = e => {
-    // --- NOUVELLE LOGIQUE CENTRALE POUR TOUS LES MENUS DÉROULANTS ---
+            const switcher = e.target.closest('#flow-switcher');
+            if (switcher) {
+                const pageContainer = document.getElementById('page-container');
+                pageContainer.classList.add('page-fade-out');
+
+                setTimeout(() => {
+                    state.activeSide = state.activeSide === 'workout' ? 'nutrition' : 'workout';
+                    state.activePage = 'Accueil'; // NOUVEAU : Redirige systématiquement vers l'accueil
+                    render();
+                }, 200);
+
+                return;
+            }
     const dropdownButton = e.target.closest('.custom-select-button, .shop-sort-button');
     const isClickInsideActiveDropdownOptions = e.target.closest('.custom-select-options.active, .shop-sort-options.active');
 
@@ -6182,12 +6497,16 @@ function handleShopEvents(e) {
             } else if (e.target.closest('[data-action="open-streak-info"]')) {
                 openStreakInfoModal(e.target.closest('[data-action="open-streak-info"]').dataset.type);
             }
-            // === NOUVELLE PARTIE : Gérer le clic sur les cartes de stats ===
             else if (e.target.closest('[data-action="open-stat-modal"]')) {
                 const statType = e.target.closest('[data-action="open-stat-modal"]').dataset.statType;
                 openStatDetailsModal(statType);
             }
-            // ==========================================================
+            else if (e.target.closest('#open-quests-modal')) {
+        openQuestsModal();
+    }
+    else if (e.target.closest('#open-guide-modal')) {
+                openGuideModal();
+            }
         }
 
         function handleWorkoutsEvents(e) {
@@ -6467,6 +6786,9 @@ render();
             } else if (e.target.closest('[data-action="open-rank-info"]')) {
                 updateAchievementProgress('rewarded_curiosity', 'rank_info', 'add_to_set');
                 openRankInfoModal();
+            }
+            else if (e.target.closest('[data-action="open-dashboard-modal"]')) {
+                openDashboardModal();
             }
         }
 
@@ -7058,6 +7380,217 @@ function openTagSelectionModal(type) {
     });
 });
 }
+
+function openGuideModal() {
+            // On définit le contenu de notre guide de manière structurée
+            const guideSections = [
+                {
+                    icon: 'fa-brain',
+                    title: 'Le Concept Principal',
+                    content: `
+                        <p>FitFlow est une application à <strong>deux facettes</strong> : Workout et Nutrition. Le gros bouton au centre de la barre de navigation, le <strong>"Flow Switcher"</strong>, est la clé. Il vous permet de basculer instantanément tout le contexte de l'application entre ces deux modes.</p>
+                        <p>Chaque page, de l'accueil au calendrier, s'adaptera pour afficher les informations pertinentes au mode que vous avez choisi.</p>
+                    `
+                },
+                {
+                    icon: 'fa-trophy',
+                    title: 'Votre Progression',
+                    content: `
+                        <p>Votre aventure sur FitFlow est rythmée par deux systèmes de progression :</p>
+                        <p><strong>1. Niveaux & XP :</strong> Gagnez de l'expérience (XP) et des pièces en terminant des séances et des quêtes. Chaque niveau atteint témoigne de votre assiduité !</p>
+                        <p><strong>2. Les Rangs :</strong> De <strong>Novice</strong> à <strong>Demi-Dieu</strong>, chaque exercice possède son propre rang. Ce n'est pas une question de temps, mais de <strong>performance pure</strong>. Plus vous soulevez lourd et effectuez de répétitions, plus votre score et votre rang pour cet exercice augmentent !</p>
+                    `
+                },
+                {
+                    icon: 'fa-gift',
+                    title: 'Quêtes & Récompenses',
+                    content: `
+                        <p>Chaque jour et chaque semaine, de nouvelles <strong>quêtes</strong> vous sont proposées. Les accomplir vous rapporte de l'XP et des <strong>pièces d'or</strong>.</p>
+                        <p>Utilisez vos pièces dans la <strong>Boutique</strong> pour acheter des objets cosmétiques uniques comme des bordures de profil et des titres, et personnalisez votre identité dans l'application.</p>
+                    `
+                },
+                {
+                    icon: 'fa-calendar-days',
+                    title: 'La Planification',
+                    content: `
+                        <p>Le secret de la réussite est un bon plan ! Rendez-vous dans les pages <strong>Bibliothèque</strong> (l'icône <i class="fa-solid fa-book-bookmark"></i>) pour créer vos propres modèles de séances ou de repas.</p>
+                        <p>Ensuite, allez sur la page <strong>"Planifier"</strong> et faites simplement glisser-déposer vos modèles sur les jours du calendrier pour construire votre programme sur mesure.</p>
+                    `
+                },
+                {
+                    icon: 'fa-users',
+                    title: 'Le Social (Bientôt !)',
+                    content: `
+                        <p>FitFlow ne fait que commencer. Prochainement, vous pourrez <strong>ajouter des amis</strong>, comparer vos statistiques, participer à des <strong>classements</strong> et relever des <strong>défis communautaires</strong>. Restez à l'écoute !</p>
+                    `
+                }
+            ];
+
+            const modalContent = `
+            <div class="glass-card w-full max-w-md p-6 rounded-t-3xl border-none h-[85vh] flex flex-col">
+                <header class="flex flex-col items-center mb-4 flex-shrink-0">
+                    <div class="w-12 h-1.5 bg-gray-600 rounded-full mb-4"></div>
+                    <h2 class="text-3xl font-bold">Guide de Démarrage</h2>
+                    <p class="text-gray-400">Les bases pour bien commencer sur FitFlow</p>
+                </header>
+                <div id="guide-accordion-container" class="flex-grow overflow-y-auto pr-2 scrollbar-hide space-y-3">
+                    ${guideSections.map(section => `
+                        <div>
+                            <button class="guide-accordion-header">
+                                <span class="flex items-center gap-3">
+                                    <i class="fa-solid ${section.icon} w-6 text-center text-violet-300"></i>
+                                    <span>${section.title}</span>
+                                </span>
+                                <i class="fa-solid fa-chevron-down icon-rotate text-gray-500"></i>
+                            </button>
+                            <div class="guide-accordion-panel">
+                                <div class="pt-4">${section.content}</div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+                 <button class="close-modal w-full mt-6 btn-primary">C'est parti !</button>
+            </div>`;
+            
+            showModal(modalContent, (modalWrapper) => {
+                const accordionContainer = modalWrapper.querySelector('#guide-accordion-container');
+                accordionContainer.addEventListener('click', e => {
+                    const header = e.target.closest('.guide-accordion-header');
+                    if (!header) return;
+
+                    const panel = header.nextElementSibling;
+                    
+                    // Fermer tous les panneaux ouverts
+                    accordionContainer.querySelectorAll('.guide-accordion-panel').forEach(p => {
+                        if (p !== panel) {
+                            p.style.maxHeight = null;
+                            p.previousElementSibling.classList.remove('active');
+                        }
+                    });
+
+                    // Ouvrir ou fermer le panneau cliqué
+                    header.classList.toggle('active');
+                    if (panel.style.maxHeight) {
+                        panel.style.maxHeight = null;
+                    } else {
+                        panel.style.maxHeight = panel.scrollHeight + "px";
+                    }
+                });
+            });
+        }
+
+function openDashboardModal() {
+            // --- ÉTAPE 1 : On récupère toutes les données nécessaires, comme sur l'ancienne page ---
+            const stats = getDashboardStats();
+            const insights = getAdvancedInsights();
+            const performedExercises = EXERCISE_DATABASE.filter(exo => state.exerciseStats[exo.id]);
+            
+            if (!state.selectedChartExerciseId && performedExercises.length > 0) {
+                state.selectedChartExerciseId = performedExercises[0].id;
+            }
+            
+            const selectedExercise = getExerciseById(state.selectedChartExerciseId);
+            const prStats = selectedExercise ? state.exerciseStats[selectedExercise.id] : null;
+            const rmValues = prStats && prStats.allTimeBest ? calculate1RM(prStats.allTimeBest.bestSet, selectedExercise) : { total1RM: 0, lest1RM: 0 };
+
+            // --- ÉTAPE 2 : On construit le HTML de la modale en copiant la structure de l'ancienne page ---
+            const modalContent = `
+            <div class="glass-card w-full max-w-md p-6 rounded-t-3xl border-none h-[85vh] flex flex-col">
+                <header class="flex justify-between items-center mb-4 flex-shrink-0">
+                    <h2 class="text-2xl font-bold">Statistiques Détaillées</h2>
+                    <button class="close-modal w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">&times;</button>
+                </header>
+                
+                <div class="flex-grow overflow-y-auto pr-2 scrollbar-hide">
+                    <div class="grid grid-cols-3 gap-3 mb-8">
+                        <button data-action="open-sessions-details" class="glass-card p-3 rounded-xl text-center hover:bg-white/10 transition-colors">
+                            <p class="text-xs text-gray-400">Séances</p>
+                            <p class="text-2xl font-bold">${stats.totalSessions}</p>
+                        </button>
+                        <button data-action="open-time-details" class="glass-card p-3 rounded-xl text-center hover:bg-white/10 transition-colors">
+                            <p class="text-xs text-gray-400">Temps Total</p>
+                            <p class="text-xl font-bold">${stats.totalTime}</p>
+                        </button>
+                        <button data-action="open-volume-details" class="glass-card p-3 rounded-xl text-center hover:bg-white/10 transition-colors">
+                            <p class="text-xs text-gray-400">Volume</p>
+                            <p class="text-xl font-bold">${stats.totalVolume}</p>
+                        </button>
+                    </div>
+
+                    <div class="glass-card p-4 rounded-2xl mb-6">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-xl font-bold">Analyse de Progression</h2>
+                            <button data-action="open-dashboard-help" class="text-gray-500 hover:text-violet-400"><i class="fa-solid fa-circle-question text-xl"></i></button>
+                        </div>
+                        
+                        <div class="relative custom-select-container mb-4">
+                            <button id="exercise-select-button" class="custom-select-button">
+                                <span class="font-semibold">${selectedExercise ? selectedExercise.name : 'Choisir un exercice'}</span>
+                                <i class="fa-solid fa-chevron-down text-gray-500"></i>
+                            </button>
+                            <div id="exercise-select-options" class="custom-select-options">
+                                ${performedExercises.length > 0 ? performedExercises.map(exo => `<div class="custom-select-option" data-value="${exo.id}">${exo.name}</div>`).join('') : '<div class="p-3 text-gray-500">Aucun exercice pratiqué</div>'}
+                            </div>
+                        </div>
+
+                        <div class="h-56 mb-4"><canvas id="progression-chart"></canvas></div>
+                        
+                        ${selectedExercise && selectedExercise.type === 'bodyweight' ? `
+                            <div class="grid grid-cols-2 gap-3 text-center">
+                                <div><p class="text-sm font-semibold text-gray-400">1RM Lest Estimé</p><p class="text-3xl font-bold text-violet-400">${formatVolume(rmValues.lest1RM)}</p></div>
+                                <div><p class="text-sm font-semibold text-gray-400">1RM Charge Totale</p><p class="text-lg font-bold">${formatVolume(rmValues.total1RM)}</p></div>
+                            </div>
+                        ` : `
+                            <div class="text-center">
+                                <p class="text-sm font-semibold text-gray-400">1-Rep Max (1RM) Estimé</p>
+                                <p class="text-5xl font-bold text-violet-400">${formatVolume(rmValues.total1RM)}</p>
+                            </div>
+                        `}
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                         <div class="glass-card p-4 rounded-xl">
+                             <p class="font-bold text-sm mb-2">⚡ Vos Insights</p>
+                             <p class="text-xs text-gray-300">Jour fétiche : <span class="font-bold text-white">${insights.bestDay}</span></p>
+                             <p class="text-xs text-gray-300">Focus sur : <span class="font-bold text-white">${insights.mostTrainedGroup}</span></p>
+                         </div>
+                         <button id="show-history-btn" class="glass-card p-4 rounded-xl flex flex-col justify-center items-center text-center hover:bg-white/10">
+                            <i class="fa-solid fa-clock-rotate-left text-2xl mb-2"></i>
+                            <p class="font-bold text-sm">Historique complet</p>
+                         </button>
+                    </div>
+                </div>
+            </div>`;
+            
+            // --- ÉTAPE 3 : On affiche la modale et on attache les événements spécifiques ---
+            showModal(modalContent, (modalWrapper) => {
+                // Dessiner le graphique une fois la modale affichée
+                renderProgressionChart(); 
+
+                // Gérer les clics à l'intérieur de la modale
+                modalWrapper.addEventListener('click', e => {
+                    const dropdownButton = e.target.closest('#exercise-select-button');
+                    const dropdownOption = e.target.closest('#exercise-select-options .custom-select-option');
+                    
+                    if (dropdownButton) {
+                        dropdownButton.nextElementSibling.classList.toggle('active');
+                    } else if (dropdownOption) {
+                        state.selectedChartExerciseId = dropdownOption.dataset.value;
+                        openDashboardModal(); // Ferme et ré-ouvre la modale pour rafraîchir avec le nouvel exercice
+                    } else if (e.target.closest('[data-action="open-dashboard-help"]')) {
+                        openDashboardHelpModal();
+                    } else if (e.target.closest('#show-history-btn')) {
+                        openSessionHistoryModal();
+                    } else if (e.target.closest('[data-action="open-sessions-details"]')) {
+                        openSessionsModal();
+                    } else if (e.target.closest('[data-action="open-time-details"]')) {
+                        openTimeModal();
+                    } else if (e.target.closest('[data-action="open-volume-details"]')) {
+                        openVolumeModal();
+                    }
+                });
+            });
+        }
 
 function openTagEditorModal(type) {
     const isWorkout = type === 'workout';
@@ -8234,6 +8767,7 @@ function openSessionHistoryModal() {
             if (savedPic) {
                 state.userProfile.profilePicUrl = savedPic;
             }
+            checkAndResetQuests(); // <-- AJOUTEZ CETTE LIGNE
             updateStreaks();
             render();
         }
