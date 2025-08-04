@@ -2810,34 +2810,33 @@ function _formatApiProduct(product) {
 }
 
 function calculateMealFitScore(meal) {
+    // --- MODIFICATION N°1 : Un repas vide renvoie N/A (null) ---
     if (!meal || !meal.ingredients || meal.ingredients.length === 0) {
-        return { finalScore: 0, adjustments: {} };
+        return { finalScore: null, adjustments: {} };
     }
 
+    // On crée une liste qui ne contient QUE les ingrédients valides (avec Nutri-Score)
+    const validIngredients = meal.ingredients.filter(ing => calculateIngredientFitScore(ing) !== null);
+
+    // Si, après filtrage, il n'y a aucun ingrédient valide, le score est N/A (null)
+    if (validIngredients.length === 0) {
+        return { finalScore: null, adjustments: {} };
+    }
+
+    // Le score de base est calculé uniquement sur les ingrédients valides
     let weightedScoreSum = 0;
-    let totalWeight = 0; // Poids total des ingrédients VALIDES uniquement
-
-    meal.ingredients.forEach(ing => {
-        const scoreResult = calculateIngredientFitScore(ing);
-        
-        // On n'ajoute l'ingrédient au calcul que s'il est valide (le résultat n'est pas null).
-        if (scoreResult !== null) {
-            weightedScoreSum += scoreResult.score * ing.quantity;
-            totalWeight += ing.quantity;
-        }
+    let totalWeight = 0;
+    validIngredients.forEach(ing => {
+        const scoreResult = calculateIngredientFitScore(ing); // On sait qu'il n'est pas null ici
+        weightedScoreSum += scoreResult.score * ing.quantity;
+        totalWeight += ing.quantity;
     });
-
-    // Si aucun ingrédient valide n'a été trouvé, le score du repas est 0.
-    if (totalWeight === 0) {
-        return { finalScore: 0, adjustments: {} };
-    }
     
     const baseScore = weightedScoreSum / totalWeight;
 
-    // --- Calcul des ajustements (Bonus/Malus) ---
+    // --- MODIFICATION N°2 : Les ajustements sont aussi calculés UNIQUEMENT sur les ingrédients valides ---
     let effectiveTotalSugars = 0;
-    const totals = meal.ingredients.reduce((acc, ing) => {
-        // Les ajustements sont calculés sur tous les ingrédients, même invalides, pour refléter la composition brute du repas.
+    const totals = validIngredients.reduce((acc, ing) => {
         const labels = ing.labels_tags || [];
         const name = ing.name ? ing.name.toLowerCase() : '';
         const noAddedSugarLabels = ['en:no-added-sugar', 'fr:sans-sucres-ajoutes'];
@@ -2859,7 +2858,6 @@ function calculateMealFitScore(meal) {
     }, { calories: 0, protein: 0, saturated_fat: 0, fiber: 0 });
 
     const adjustments = { sugarMalus: 0, satFatMalus: 0, proteinBonus: 0, completenessBonus: 0 };
-
     if (totals.calories > 0) {
         const sugarCaloriePercent = (effectiveTotalSugars * 4 / totals.calories) * 100;
         const satFatCaloriePercent = (totals.saturated_fat * 9 / totals.calories) * 100;
