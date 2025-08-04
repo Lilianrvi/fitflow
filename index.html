@@ -2739,11 +2739,13 @@ function animateItemPurchaseSuccess(itemCardElement) {
     if (!mealName || !state.editingMeal) return;
     state.editingMeal.name = mealName;
 
+    // --- CORRECTION CLÉ : Ajout de `|| 0` pour chaque addition ---
+    // Si ing.nutrition.calories est null, il sera traité comme 0 pour CETTE addition SEULEMENT.
     const totals = state.editingMeal.ingredients.reduce((acc, ing) => {
-        acc.calories += ing.nutrition.calories;
-        acc.protein += ing.nutrition.protein;
-        acc.carbs += ing.nutrition.carbs;
-        acc.fat += ing.nutrition.fat;
+        acc.calories += ing.nutrition.calories || 0;
+        acc.protein += ing.nutrition.protein || 0;
+        acc.carbs += ing.nutrition.carbs || 0;
+        acc.fat += ing.nutrition.fat || 0;
         return acc;
     }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
     state.editingMeal.nutrition = totals;
@@ -4657,7 +4659,7 @@ Shop: () => {
                                         </button>
                                         <div class="flex-grow min-w-0 cursor-pointer" data-navigate="MealEditor" data-id="${meal.id}">
                                             <h2 class="text-lg font-semibold truncate-ellipsis">${meal.name}</h2>
-                                            <p class="text-sm text-gray-400 mt-1">${meal.nutrition.calories.toFixed(0)} kcal | ${meal.nutrition.protein.toFixed(1)}g Prot.</p>
+                                            <p class="text-sm text-gray-400 mt-1">${(meal.nutrition.calories || 0).toFixed(0)} kcal | ${(meal.nutrition.protein || 0).toFixed(1)}g Prot.</p>
                                             <div class="flex items-center gap-1.5 mt-1.5 flex-wrap min-h-6">
                                                 ${(meal.tags && meal.tags.length > 0)
                                                     ? meal.tags.map(tagId => {
@@ -4777,11 +4779,11 @@ Shop: () => {
     <p class="text-xs text-gray-400">FitScore</p>
 </div>
                     <div class="glass-card p-3 rounded-xl flex flex-col justify-center items-center">
-                        <p class="font-bold text-2xl">${totals.calories.toFixed(0)}</p>
+                        <p class="font-bold text-2xl">${(totals.calories || 0).toFixed(0)}</p>
                         <p class="text-xs text-gray-400">Kcal</p>
                     </div>
                     <div class="glass-card p-3 rounded-xl flex flex-col justify-center items-center">
-                        <p class="font-bold text-2xl">${totals.protein.toFixed(1)}g</p>
+                        <p class="font-bold text-2xl">${(totals.protein || 0).toFixed(1)}g</p>
                         <p class="text-xs text-gray-400">Prot.</p>
                     </div>
                 </div>
