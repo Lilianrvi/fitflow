@@ -2906,7 +2906,7 @@ async function handleAutocompleteSearch(e) {
                 fields: 'code,product_name_fr,product_name,brands,nutriments,image_url,nutriscore_score,additives_tags,labels_tags'
             });
             
-            const apiUrl = `https://world.openfoodfacts.org/cgi/search.pl?${searchParams.toString()}`;
+            const apiUrl = `/api/recherche?${searchParams.toString()}`;
 
             const response = await fetch(apiUrl, {
                 headers: { 'User-Agent': 'FitFlowApp/1.0 - Projet Etudiant' }
