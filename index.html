@@ -2881,13 +2881,11 @@ async function handleAutocompleteSearch(e) {
     const query = e.target.value;
     const resultsContainer = document.getElementById('autocomplete-results');
     
-    // Notre nouvelle zone de débogage
+    // ... (le reste du code de débogage reste identique)
     const debugOutput = document.getElementById('debug-output');
-    debugOutput.innerHTML = ''; // On la vide à chaque nouvelle recherche
+    if (debugOutput) debugOutput.innerHTML = ''; 
 
-    if (autocompleteTimeout) {
-        clearTimeout(autocompleteTimeout);
-    }
+    if (autocompleteTimeout) clearTimeout(autocompleteTimeout);
 
     if (!query || query.length < 3) {
         resultsContainer.innerHTML = '';
@@ -2903,50 +2901,37 @@ async function handleAutocompleteSearch(e) {
             const encodedQuery = encodeURIComponent(query);
             const apiUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodedQuery}&action=process&json=1&page_size=20&lc=fr&sort_by=unique_scans_n&fields=${fields}`;
 
-            // ÉCRITURE DANS LE DÉBOGUEUR
-            debugOutput.innerHTML += `<div>1. Appel de l'URL: ${apiUrl.substring(0, 100)}...</div>`;
+            if (debugOutput) debugOutput.innerHTML += `<div>1. Appel SANS User-Agent...</div>`;
 
-            const response = await fetch(apiUrl, {
-                headers: { 
-                    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1 FitFlowApp/1.0'
-                }
-            });
+            // ----- MODIFICATION CLÉ : ON A COMPLÈTEMENT SUPPRIMÉ L'OBJET headers -----
+            const response = await fetch(apiUrl);
+            // --------------------------------------------------------------------------
 
-            // ÉCRITURE DANS LE DÉBOGUEUR
-            debugOutput.innerHTML += `<div>2. Réponse reçue. Statut: ${response.status} ${response.statusText}</div>`;
+            if (debugOutput) debugOutput.innerHTML += `<div>2. Réponse reçue. Statut: ${response.status} ${response.statusText}</div>`;
 
             if (!response.ok) {
-                // ÉCRITURE DANS LE DÉBOGUEUR
-                debugOutput.innerHTML += `<div style="color: yellow;">ERREUR: La réponse n'est pas OK. Statut ${response.status}.</div>`;
+                if (debugOutput) debugOutput.innerHTML += `<div style="color: yellow;">ERREUR: La réponse n'est pas OK. Statut ${response.status}.</div>`;
                 throw new Error(`Erreur API: Statut ${response.status}`);
             }
             
             const data = await response.json();
-            debugOutput.innerHTML += `<div>3. Données JSON analysées avec succès.</div>`;
+            if (debugOutput) debugOutput.innerHTML += `<div>3. Données analysées.</div>`;
             
+            // ... (le reste de la fonction est inchangé)
             if (!data.products || data.products.length === 0) {
                  resultsContainer.innerHTML = '<div class="p-3 text-gray-500 text-center">Aucun résultat trouvé.</div>';
                  currentSearchResults = [];
                  return;
             }
-
             const formattedProducts = data.products.map(_formatApiProduct);
             currentSearchResults = formattedProducts;
-
             resultsContainer.innerHTML = currentSearchResults.map((food, index) =>
-                `<div class="p-3 hover:bg-violet-500 rounded-md cursor-pointer" data-index="${index}">
-                    <p class="font-semibold">${food.name}</p>
-                    <p class="text-sm text-gray-400">${food.brand || 'Marque inconnue'} - ${food.base_100g.calories} kcal</p>
-                </div>`
+                `<div class="p-3 hover:bg-violet-500 rounded-md cursor-pointer" data-index="${index}"><p class="font-semibold">${food.name}</p><p class="text-sm text-gray-400">${food.brand || 'Marque inconnue'} - ${food.base_100g.calories} kcal</p></div>`
             ).join('');
 
         } catch (error) {
-            console.error('Erreur DÉFINITIVE lors de la recherche:', error);
             resultsContainer.innerHTML = '<div class="p-3 text-red-400 text-center">Erreur de connexion à l\'API.</div>';
-            
-            // ÉCRITURE DE L'ERREUR FINALE DANS LE DÉBOGUEUR
-            debugOutput.innerHTML += `<div style="font-weight: bold; color: yellow;">ERREUR FINALE CAPTURÉE: ${error.message}</div>`;
-            debugOutput.innerHTML += `<div style="font-size: 10px;">${error.stack ? error.stack.substring(0, 200) : ''}</div>`;
+            if (debugOutput) debugOutput.innerHTML += `<div style="font-weight: bold; color: yellow;">ERREUR FINALE: ${error.message}</div>`;
         }
     }, 300);
 }
