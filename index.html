@@ -1094,8 +1094,6 @@
         <div id="bottom-nav-container" class="absolute bottom-4 left-4 right-4 h-16 z-20"></div>
         <div id="global-modal-container" class="fixed inset-0 z-30 pointer-events-none"></div>
         <div id="scanner-container" class="fixed inset-0 z-40 hidden"></div>
-        <div id="debug-output" style="position: fixed; bottom: 100px; left: 10px; right: 10px; background: rgba(0,0,0,0.8); color: red; padding: 10px; border-radius: 8px; z-index: 9999; font-family: monospace; max-height: 150px; overflow-y: auto;">
-    Logs de débogage...
 </div>
     </div>
 
@@ -2780,8 +2778,9 @@ function getFitScoreColor(score) {
 function _formatApiProduct(product) {
     const nutriments = product.nutriments || {};
 
-    let calories = nutriments.energy_kcal_100g || nutriments['energy-kcal_100g'] || 0;
-    if (calories === 0 && (nutriments.energy_100g || nutriments['energy-kj_100g'])) {
+    let calories = nutriments.energy_kcal_100g || nutriments['energy-kcal_100g'];
+    // Si les calories en kcal sont manquantes, on les calcule depuis les kJ
+    if (typeof calories !== 'number' && (nutriments.energy_100g || nutriments['energy-kj_100g'])) {
         calories = (nutriments.energy_100g || nutriments['energy-kj_100g']) / 4.184;
     }
 
@@ -2793,13 +2792,17 @@ function _formatApiProduct(product) {
         additives: product.additives_tags || [],
         labels_tags: product.labels_tags || [],
         base_100g: {
-            calories: Math.round(calories),
-            protein: nutriments.proteins_100g || 0,
-            fat: nutriments.fat_100g || 0,
-            carbs: nutriments.carbohydrates_100g || 0,
-            sugars: nutriments.sugars_100g || 0,
-            fiber: nutriments.fiber_100g || 0,
-            saturated_fat: nutriments['saturated-fat_100g'] || 0,
+            // --- MODIFICATION CLÉ CI-DESSOUS ---
+            // On vérifie si la donnée est un nombre. Si ce n'est pas le cas (undefined, null, etc.),
+            // on stocke 'null' pour marquer la donnée comme manquante.
+            calories: typeof calories === 'number' ? Math.round(calories) : null,
+            protein: typeof nutriments.proteins_100g === 'number' ? nutriments.proteins_100g : null,
+            fat: typeof nutriments.fat_100g === 'number' ? nutriments.fat_100g : null,
+            carbs: typeof nutriments.carbohydrates_100g === 'number' ? nutriments.carbohydrates_100g : null,
+            sugars: typeof nutriments.sugars_100g === 'number' ? nutriments.sugars_100g : null,
+            fiber: typeof nutriments.fiber_100g === 'number' ? nutriments.fiber_100g : null,
+            saturated_fat: typeof nutriments['saturated-fat_100g'] === 'number' ? nutriments['saturated-fat_100g'] : null,
+            // --- FIN DE LA MODIFICATION ---
             nutri_score_grade: product.nutriscore_grade || 'unknown',
             nutri_score_value: product.nutriscore_score
         }
@@ -2811,64 +2814,60 @@ function calculateMealFitScore(meal) {
         return { finalScore: 0, adjustments: {} };
     }
 
-    // --- ÉTAPE 1: Calcul du score de base ---
     let weightedScoreSum = 0;
-    let totalWeight = 0;
-    meal.ingredients.forEach(ing => {
-        const { score } = calculateIngredientFitScore(ing);
-        weightedScoreSum += score * ing.quantity;
-        totalWeight += ing.quantity;
-    });
-    const baseScore = totalWeight > 0 ? (weightedScoreSum / totalWeight) : 0;
+    let totalWeight = 0; // Poids total des ingrédients VALIDES uniquement
 
-    // --- ÉTAPE 2: Calcul des totaux et des ajustements ---
+    meal.ingredients.forEach(ing => {
+        const scoreResult = calculateIngredientFitScore(ing);
+        
+        // On n'ajoute l'ingrédient au calcul que s'il est valide (le résultat n'est pas null).
+        if (scoreResult !== null) {
+            weightedScoreSum += scoreResult.score * ing.quantity;
+            totalWeight += ing.quantity;
+        }
+    });
+
+    // Si aucun ingrédient valide n'a été trouvé, le score du repas est 0.
+    if (totalWeight === 0) {
+        return { finalScore: 0, adjustments: {} };
+    }
+    
+    const baseScore = weightedScoreSum / totalWeight;
+
+    // --- Calcul des ajustements (Bonus/Malus) ---
     let effectiveTotalSugars = 0;
     const totals = meal.ingredients.reduce((acc, ing) => {
-        // Logique de calcul du sucre effectif pour l'ajustement global
+        // Les ajustements sont calculés sur tous les ingrédients, même invalides, pour refléter la composition brute du repas.
         const labels = ing.labels_tags || [];
         const name = ing.name ? ing.name.toLowerCase() : '';
         const noAddedSugarLabels = ['en:no-added-sugar', 'fr:sans-sucres-ajoutes'];
         const rawFruitVegRegex = /\b(abricot|abricots|ananas|avocat|avocats|banane|bananes|cassis|cerise|cerises|citron|citrons|clémentine|clémentines|coing|coings|datte|dattes|figue|figues|fraise|fraises|framboise|framboises|grenade|grenades|groseille|groseilles|kiwi|kiwis|kumquat|kumquats|litchi|litchis|mandarine|mandarines|mangue|mangues|melon|melons|mirabelle|mirabelles|mûre|mûres|myrtille|myrtilles|nectarine|nectarines|orange|oranges|pamplemousse|pamplemousses|papaye|papayes|pastèque|pastèques|pêche|pêches|poire|poires|pomme|pommes|prune|prunes|raisin|raisins|tomate|tomates|artichaut|artichauts|asperge|asperges|aubergine|aubergines|betterave|betteraves|blette|blettes|brocoli|brocolis|carotte|carottes|céleri|céleris|champignon|champignons|chou|choux|concombre|concombres|courgette|courgettes|endive|endives|épinard|épinards|fenouil|fenouils|haricot vert|haricots verts|laitue|laitues|maïs|navet|navets|oignon|oignons|panais|poivron|poivrons|potiron|potirons|radis|salade|salades)\b/;
         const processedFruitRegex = /\b(jus de|compote|purée de|confiture|sirop)/;
-        
-        let ingredientEffectiveSugar = ing.nutrition.sugars;
+        let ingredientEffectiveSugar = ing.nutrition.sugars || 0;
         if (labels.some(label => noAddedSugarLabels.includes(label)) || (rawFruitVegRegex.test(name) && !processedFruitRegex.test(name))) {
             ingredientEffectiveSugar *= 0.20;
         } else if (processedFruitRegex.test(name)) {
             ingredientEffectiveSugar *= 0.60;
         }
         effectiveTotalSugars += ingredientEffectiveSugar;
-
-        // Calcul des autres totaux (inchangé)
         const nut = ing.nutrition;
-        acc.calories += nut.calories;
-        acc.protein += nut.protein;
-        acc.saturated_fat += nut.saturated_fat;
-        acc.fiber += ing.nutrition.fiber;
+        acc.calories += nut.calories || 0;
+        acc.protein += nut.protein || 0;
+        acc.saturated_fat += nut.saturated_fat || 0;
+        acc.fiber += ing.nutrition.fiber || 0;
         return acc;
     }, { calories: 0, protein: 0, saturated_fat: 0, fiber: 0 });
 
     const adjustments = { sugarMalus: 0, satFatMalus: 0, proteinBonus: 0, completenessBonus: 0 };
 
     if (totals.calories > 0) {
-        // CHANGEMENT CLÉ : On utilise le total de sucre effectif ici
         const sugarCaloriePercent = (effectiveTotalSugars * 4 / totals.calories) * 100;
         const satFatCaloriePercent = (totals.saturated_fat * 9 / totals.calories) * 100;
         const proteinCaloriePercent = (totals.protein * 4 / totals.calories) * 100;
-
-        // Les règles d'ajustement ne changent pas, mais elles utilisent la nouvelle valeur
-        if (sugarCaloriePercent > 30) {
-            adjustments.sugarMalus = Math.round(-Math.min(5, (sugarCaloriePercent - 30) * 0.2));
-        }
-        if (satFatCaloriePercent > 15) {
-            adjustments.satFatMalus = Math.round(-Math.min(5, (satFatCaloriePercent - 15) * 0.3));
-        }
-        if (proteinCaloriePercent > 25) {
-            adjustments.proteinBonus = Math.round(Math.min(5, (proteinCaloriePercent - 25) * 0.2));
-        }
-        if (totals.protein >= 20 && totals.fiber >= 5) {
-            adjustments.completenessBonus = 3;
-        }
+        if (sugarCaloriePercent > 30) adjustments.sugarMalus = Math.round(-Math.min(5, (sugarCaloriePercent - 30) * 0.2));
+        if (satFatCaloriePercent > 15) adjustments.satFatMalus = Math.round(-Math.min(5, (satFatCaloriePercent - 15) * 0.3));
+        if (proteinCaloriePercent > 25) adjustments.proteinBonus = Math.round(Math.min(5, (proteinCaloriePercent - 25) * 0.2));
+        if (totals.protein >= 20 && totals.fiber >= 5) adjustments.completenessBonus = 3;
     }
     
     const totalAdjustment = Object.values(adjustments).reduce((sum, val) => sum + val, 0);
@@ -2880,58 +2879,61 @@ function calculateMealFitScore(meal) {
 async function handleAutocompleteSearch(e) {
     const query = e.target.value;
     const resultsContainer = document.getElementById('autocomplete-results');
-    
-    // ... (le reste du code de débogage reste identique)
-    const debugOutput = document.getElementById('debug-output');
-    if (debugOutput) debugOutput.innerHTML = ''; 
-
     if (autocompleteTimeout) clearTimeout(autocompleteTimeout);
-
     if (!query || query.length < 3) {
         resultsContainer.innerHTML = '';
         currentSearchResults = [];
         return;
     }
-
     resultsContainer.innerHTML = '<div class="p-3 text-gray-400 text-center">Recherche...</div>';
-
     autocompleteTimeout = setTimeout(async () => {
         try {
-            const fields = 'code,product_name_fr,product_name,brands,nutriments';
+            const fields = 'code,product_name_fr,product_name,brands,nutriments,image_url,nutriscore_score,additives_tags,labels_tags';
             const encodedQuery = encodeURIComponent(query);
             const apiUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodedQuery}&action=process&json=1&page_size=20&lc=fr&sort_by=unique_scans_n&fields=${fields}`;
-
-            if (debugOutput) debugOutput.innerHTML += `<div>1. Appel SANS User-Agent...</div>`;
-
-            // ----- MODIFICATION CLÉ : ON A COMPLÈTEMENT SUPPRIMÉ L'OBJET headers -----
+            
             const response = await fetch(apiUrl);
-            // --------------------------------------------------------------------------
-
-            if (debugOutput) debugOutput.innerHTML += `<div>2. Réponse reçue. Statut: ${response.status} ${response.statusText}</div>`;
-
             if (!response.ok) {
-                if (debugOutput) debugOutput.innerHTML += `<div style="color: yellow;">ERREUR: La réponse n'est pas OK. Statut ${response.status}.</div>`;
                 throw new Error(`Erreur API: Statut ${response.status}`);
             }
-            
             const data = await response.json();
-            if (debugOutput) debugOutput.innerHTML += `<div>3. Données analysées.</div>`;
             
-            // ... (le reste de la fonction est inchangé)
             if (!data.products || data.products.length === 0) {
                  resultsContainer.innerHTML = '<div class="p-3 text-gray-500 text-center">Aucun résultat trouvé.</div>';
                  currentSearchResults = [];
                  return;
             }
-            const formattedProducts = data.products.map(_formatApiProduct);
-            currentSearchResults = formattedProducts;
-            resultsContainer.innerHTML = currentSearchResults.map((food, index) =>
-                `<div class="p-3 hover:bg-violet-500 rounded-md cursor-pointer" data-index="${index}"><p class="font-semibold">${food.name}</p><p class="text-sm text-gray-400">${food.brand || 'Marque inconnue'} - ${food.base_100g.calories} kcal</p></div>`
-            ).join('');
 
+            const formattedProducts = data.products.map(_formatApiProduct);
+
+            // --- MODIFICATION CLÉ : ON AJOUTE DEUX FILTRES ---
+            const filteredProducts = formattedProducts.filter(p => {
+                const base = p.base_100g;
+                const name = p.name.toLowerCase();
+                
+                // Règle 1: Doit avoir un Nutri-Score connu.
+                const hasNutriScore = typeof base.nutri_score_value === 'number';
+                
+                // Règle 2: Doit avoir des calories, SAUF si c'est de l'eau.
+                const isWater = name.includes('eau de source') || name.includes('eau minérale');
+                const hasCalories = typeof base.calories === 'number' && base.calories > 0;
+
+                return hasNutriScore && (hasCalories || isWater);
+            });
+            // --- FIN DE LA MODIFICATION ---
+
+            currentSearchResults = filteredProducts;
+
+            if (currentSearchResults.length === 0) {
+                resultsContainer.innerHTML = '<div class="p-3 text-gray-500 text-center">Aucun aliment pertinent trouvé.</div>';
+                return;
+            }
+
+            resultsContainer.innerHTML = currentSearchResults.map((food, index) =>
+                `<div class="p-3 hover:bg-violet-500 rounded-md cursor-pointer" data-index="${index}"><p class="font-semibold">${food.name}</p><p class="text-sm text-gray-400">${food.brand || 'Marque inconnue'} - ${food.base_100g.calories || '0'} kcal</p></div>`
+            ).join('');
         } catch (error) {
             resultsContainer.innerHTML = '<div class="p-3 text-red-400 text-center">Erreur de connexion à l\'API.</div>';
-            if (debugOutput) debugOutput.innerHTML += `<div style="font-weight: bold; color: yellow;">ERREUR FINALE: ${error.message}</div>`;
         }
     }, 300);
 }
@@ -2998,20 +3000,21 @@ async function handleAutocompleteSearch(e) {
 
 function calculateIngredientFitScore(ingredient) {
     const base = ingredient?.base_100g;
-    if (!base) return { score: 50, details: null };
 
-    // CHANGEMENT CLÉ : On passe l'objet 'ingredient' complet à la fonction _getMacroScore
-    const macroScore = _getMacroScore(ingredient);
-
-    const nutriScoreValue = base.nutri_score_value;
-    if (typeof nutriScoreValue !== 'number') {
-        console.log(`--- Analyse FitScore pour : ${ingredient.name} ---\n- Note Nutri-Score Officiel : N/A\n- Note Macro Calculée : ${macroScore}\n=> Score Final (100% Macro) : ${macroScore}\n-------------------------------------------`);
-        return { score: macroScore, details: null };
+    // Règle unique : si le Nutri-Score n'est pas un nombre, l'ingrédient est invalide pour les calculs.
+    if (typeof base?.nutri_score_value !== 'number') {
+        console.warn(`Nutri-Score manquant pour '${ingredient.name}'. L'ingrédient sera ignoré dans les calculs.`);
+        return null; 
     }
+
+    // Le calcul se poursuit uniquement pour les aliments valides.
+    const macroScore = _getMacroScore(ingredient);
+    const nutriScoreValue = base.nutri_score_value;
+
     const nutriScoreComponent = _convertScoreToFitScore(nutriScoreValue);
     const finalScore = (nutriScoreComponent * 0.6) + (macroScore * 0.4);
     const roundedFinalScore = Math.round(finalScore);
-    console.log(`--- Analyse FitScore pour : ${ingredient.name} ---\n- Note Nutri-Score Officiel (60%) : ${nutriScoreComponent}\n- Note Macro Calculée (40%) : ${macroScore}\n=> Score Final Pondéré : ${roundedFinalScore}\n-------------------------------------------`);
+    
     return { score: roundedFinalScore, details: null };
 }
 
@@ -3116,7 +3119,6 @@ async function fetchProductFromAPI(code) {
  * Intègre la nouvelle interface et des améliorations de fiabilité.
  */
 async function startScanner(isQuickAdd = false) {
-    // 1. Interface de la modale améliorée avec un viseur esthétique et une animation.
     const modalContent = `
         <div class="glass-card p-6 rounded-3xl w-full max-w-sm text-center flex flex-col h-[80vh]">
             <header class="flex justify-between items-center mb-4">
@@ -3128,26 +3130,14 @@ async function startScanner(isQuickAdd = false) {
             
             <div id="interactive" class="relative flex-grow rounded-lg overflow-hidden bg-black group">
                 <style>
-                    .scanner-corner {
-                        position: absolute; width: 30px; height: 30px;
-                        border: 5px solid white; border-radius: 12px;
-                        transition: border-color 0.2s;
-                    }
+                    .scanner-corner { position: absolute; width: 30px; height: 30px; border: 5px solid white; border-radius: 12px; transition: border-color 0.2s; }
                     .group:hover .scanner-corner { border-color: var(--accent-color); }
                     .scanner-corner.top-left { top: 15px; left: 15px; border-right: none; border-bottom: none; }
                     .scanner-corner.top-right { top: 15px; right: 15px; border-left: none; border-bottom: none; }
                     .scanner-corner.bottom-left { bottom: 15px; left: 15px; border-right: none; border-top: none; }
                     .scanner-corner.bottom-right { bottom: 15px; right: 15px; border-left: none; border-top: none; }
-                    @keyframes scanner-animation {
-                        0%, 100% { top: 15%; } 50% { top: 85%; }
-                    }
-                    .scanner-laser {
-                        position: absolute; left: 10%; right: 10%; height: 2px;
-                        background: var(--accent-color);
-                        box-shadow: 0 0 8px var(--accent-color);
-                        animation: scanner-animation 3s infinite ease-in-out;
-                        border-radius: 2px;
-                    }
+                    @keyframes scanner-animation { 0%, 100% { top: 15%; } 50% { top: 85%; } }
+                    .scanner-laser { position: absolute; left: 10%; right: 10%; height: 2px; background: var(--accent-color); box-shadow: 0 0 8px var(--accent-color); animation: scanner-animation 3s infinite ease-in-out; border-radius: 2px; }
                 </style>
                 <div class="scanner-corner top-left"></div>
                 <div class="scanner-corner top-right"></div>
@@ -3163,14 +3153,13 @@ async function startScanner(isQuickAdd = false) {
         </div>
     `;
 
-    // FIABILITÉ ACCRUE : Le 'closeCallback' garantit que la caméra est toujours libérée.
     const cleanup = () => {
-        Quagga.stop();
-        // Vous pouvez ajouter d'autres actions de nettoyage ici si nécessaire.
+        if (Quagga.initialized) { // Sécurité pour éviter les erreurs si Quagga n'a pas démarré
+            Quagga.stop();
+        }
     };
 
     showModal(modalContent, (modalWrapper) => {
-        // ... (Le reste du code de la fonction est quasi identique à la version précédente)
         const scannerContainer = modalWrapper.querySelector('#interactive');
         const statusMessageEl = modalWrapper.querySelector('#scan-status-message');
         const torchBtn = modalWrapper.querySelector('#torch-toggle-btn');
@@ -3178,12 +3167,9 @@ async function startScanner(isQuickAdd = false) {
 
         const quaggaConfig = {
             inputStream: {
-                name: "Live",
-                type: "LiveStream",
-                target: scannerContainer,
+                name: "Live", type: "LiveStream", target: scannerContainer,
                 constraints: {
-                    width: { min: 640, ideal: 1280 },
-                    height: { min: 480, ideal: 720 },
+                    width: { min: 640, ideal: 1280 }, height: { min: 480, ideal: 720 },
                     facingMode: "environment",
                     advanced: [{ torch: isTorchOn }, { focusMode: 'continuous' }]
                 },
@@ -3191,7 +3177,13 @@ async function startScanner(isQuickAdd = false) {
                 frequency: 10
             },
             locator: { halfSample: false, patchSize: "large" },
-            decoder: { readers: ["ean_reader", "upc_reader", "ean_8_reader"], multiple: false },
+            // --- MODIFICATION CLÉ CI-DESSOUS ---
+            // On ajoute 'code_128_reader' et d'autres pour une meilleure compatibilité.
+            decoder: { 
+                readers: ["ean_reader", "upc_reader", "ean_8_reader", "code_128_reader"], 
+                multiple: false 
+            },
+            // --- FIN DE LA MODIFICATION ---
             locate: true,
             numOfWorkers: navigator.hardwareConcurrency || 2,
         };
@@ -3199,7 +3191,6 @@ async function startScanner(isQuickAdd = false) {
         const startQuagga = () => {
             Quagga.init(quaggaConfig, function (err) {
                 if (err) {
-                    // GESTION AMÉLIORÉE : Gestion plus claire des erreurs de caméra.
                     console.error("Erreur QuaggaJS:", err);
                     if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
                         statusMessageEl.textContent = "Accès à la caméra refusé.";
@@ -3209,9 +3200,12 @@ async function startScanner(isQuickAdd = false) {
                     statusMessageEl.classList.add('text-red-400');
                     return;
                 }
-                const capabilities = Quagga.CameraAccess.getActiveTrack().getCapabilities();
-                if (capabilities.torch) {
-                    torchBtn.classList.remove('hidden');
+                const track = Quagga.CameraAccess.getActiveTrack();
+                if (track) {
+                    const capabilities = track.getCapabilities();
+                    if (capabilities.torch) {
+                        torchBtn.classList.remove('hidden');
+                    }
                 }
                 Quagga.start();
             });
@@ -3231,7 +3225,7 @@ async function startScanner(isQuickAdd = false) {
 
             const lastDetections = detectedCodes.slice(-requiredDetections);
             if (new Set(lastDetections).size === 1) {
-                cleanup(); // Arrête le scanner
+                cleanup();
                 detectedCodes = []; 
 
                 statusMessageEl.textContent = `Recherche de ${code}...`;
@@ -3243,7 +3237,6 @@ async function startScanner(isQuickAdd = false) {
                         productData = await fetchProductFromAPI(code);
                         if (productData) break;
                     } catch (error) {
-                        console.error(`Tentative API ${attempt} échouée:`, error);
                         if (attempt >= 3) {
                             showToast("Produit non trouvé après plusieurs tentatives.", "error");
                             closeModal();
@@ -3265,7 +3258,7 @@ async function startScanner(isQuickAdd = false) {
                 detectedCodes = detectedCodes.slice(1);
             }
         });
-
+        
         torchBtn.addEventListener('click', () => {
             isTorchOn = !isTorchOn;
             torchBtn.classList.toggle('text-yellow-400', isTorchOn);
@@ -3275,7 +3268,7 @@ async function startScanner(isQuickAdd = false) {
             startQuagga();
         });
 
-    }, cleanup); // On passe la fonction de nettoyage ici
+    }, cleanup);
 }
 
 function convertScoreToGrade(score) {
@@ -6120,17 +6113,18 @@ function handleShopEvents(e) {
             <h2 class="text-2xl font-bold">Analyse du Score</h2>
         </header>
         
-        <div class="text-center mb-4"> <p class="text-7xl font-extrabold" style="color: ${mealScoreColor}; filter: drop-shadow(0 0 10px ${mealScoreColor}60);">${mealScore}</p>
-            </div>
+        <div class="text-center mb-4">
+            <p class="text-7xl font-extrabold" style="color: ${mealScoreColor}; filter: drop-shadow(0 0 10px ${mealScoreColor}60);">${mealScore}</p>
+        </div>
 
         ${(adjustments && Object.values(adjustments).some(v => v !== 0)) ? `
         <div class="mb-4">
             <h3 class="font-semibold text-sm text-gray-400 mb-2 text-center">Ajustements d'Équilibre</h3>
             <div class="glass-card p-3 rounded-lg space-y-2 text-sm">
                 ${adjustments.sugarMalus < 0 ? `<div class="flex justify-between items-center"><span><i class="fa-solid fa-candy-cane text-red-400 mr-2"></i>Malus Sucres</span><span class="font-bold text-red-400">${adjustments.sugarMalus.toFixed(0)}</span></div>` : ''}
-    ${adjustments.satFatMalus < 0 ? `<div class="flex justify-between items-center"><span><i class="fa-solid fa-bacon text-red-400 mr-2"></i>Malus Graisses Saturées</span><span class="font-bold text-red-400">${adjustments.satFatMalus.toFixed(0)}</span></div>` : ''}
-    ${adjustments.proteinBonus > 0 ? `<div class="flex justify-between items-center"><span><i class="fa-solid fa-drumstick-bite text-green-400 mr-2"></i>Bonus Protéines</span><span class="font-bold text-green-400">+${adjustments.proteinBonus.toFixed(0)}</span></div>` : ''}
-    ${adjustments.completenessBonus > 0 ? `<div class="flex justify-between items-center"><span><i class="fa-solid fa-leaf text-green-400 mr-2"></i>Bonus Repas Complet</span><span class="font-bold text-green-400">+${adjustments.completenessBonus.toFixed(0)}</span></div>` : ''}
+                ${adjustments.satFatMalus < 0 ? `<div class="flex justify-between items-center"><span><i class="fa-solid fa-bacon text-red-400 mr-2"></i>Malus Graisses Saturées</span><span class="font-bold text-red-400">${adjustments.satFatMalus.toFixed(0)}</span></div>` : ''}
+                ${adjustments.proteinBonus > 0 ? `<div class="flex justify-between items-center"><span><i class="fa-solid fa-drumstick-bite text-green-400 mr-2"></i>Bonus Protéines</span><span class="font-bold text-green-400">+${adjustments.proteinBonus.toFixed(0)}</span></div>` : ''}
+                ${adjustments.completenessBonus > 0 ? `<div class="flex justify-between items-center"><span><i class="fa-solid fa-leaf text-green-400 mr-2"></i>Bonus Repas Complet</span><span class="font-bold text-green-400">+${adjustments.completenessBonus.toFixed(0)}</span></div>` : ''}
             </div>
         </div>
         ` : ''}
@@ -6139,19 +6133,24 @@ function handleShopEvents(e) {
             <h3 class="font-semibold text-center mb-2">Détail par ingrédient</h3>
             <div class="text-sm text-gray-300 space-y-2 max-h-32 overflow-y-auto pr-2 scrollbar-hide">
                 ${meal.ingredients.map(ing => {
-                    const { score } = calculateIngredientFitScore(ing);
-const grade = convertScoreToGrade(score);
-const gradeColor = getFitScoreColor(score); // Le calcul de la couleur est correct
-return `<div class="flex items-center">
-    <span class="flex-grow truncate pr-2">${ing.name}</span>
-    <span class="font-mono font-bold flex-shrink-0" style="color: ${gradeColor}">
-        ${grade}
-    </span>
-</div>`;
+                    const scoreResult = calculateIngredientFitScore(ing);
+                    let grade = 'N/A';
+                    let gradeColor = '#6B7280';
+                    
+                    if (scoreResult !== null) {
+                        grade = convertScoreToGrade(scoreResult.score);
+                        gradeColor = getFitScoreColor(scoreResult.score);
+                    }
+                    
+                    return `<div class="flex items-center">
+                        <span class="flex-grow truncate pr-2">${ing.name}</span>
+                        <span class="font-mono font-bold flex-shrink-0" style="color: ${gradeColor}">
+                            ${grade}
+                        </span>
+                    </div>`;
                 }).join('')}
             </div>
         </div>
-
         <button class="close-modal w-full mt-8 btn-primary">Fermer</button>
     </div>`;
     
@@ -7333,33 +7332,75 @@ function openCollectionModal() {
     });
 }
 
+// DANS index.html, REMPLACEZ CETTE FONCTION
 function openMealDetailsModal() {
     if (!state.editingMeal) return;
     const meal = state.editingMeal;
     
+    // Le calcul des totaux reste le même, il inclut tous les ingrédients.
     const allTotals = meal.ingredients.reduce((acc, ing) => {
         const nut = ing.nutrition;
-        acc.calories += nut.calories;
-        acc.protein += nut.protein;
-        acc.carbs += nut.carbs;
-        acc.fat += nut.fat;
-        acc.sugars += nut.sugars;
-        acc.fiber += nut.fiber;
-        acc.saturated_fat += nut.saturated_fat;
+        acc.calories += nut.calories || 0;
+        acc.protein += nut.protein || 0;
+        acc.carbs += nut.carbs || 0;
+        acc.fat += nut.fat || 0;
+        acc.sugars += nut.sugars || 0;
+        acc.fiber += nut.fiber || 0;
+        acc.saturated_fat += nut.saturated_fat || 0;
         return acc;
     }, { calories: 0, protein: 0, carbs: 0, fat: 0, sugars: 0, fiber: 0, saturated_fat: 0 });
+
+    // --- NOUVELLE LOGIQUE DE DÉTECTION (CORRIGÉE) ---
+    // Ce bloc vérifie maintenant chaque nutriment, indépendamment du Nutri-Score.
+    const incompleteIngredientsForDisclaimer = [];
+    meal.ingredients.forEach(ing => {
+        const missingNutrients = [];
+        const fieldsToCheck = {
+            calories: 'Calories',
+            protein: 'Protéines',
+            carbs: 'Glucides',
+            sugars: 'Sucres',
+            fat: 'Lipides',
+            saturated_fat: 'Graisses saturées',
+            fiber: 'Fibres'
+        };
+
+        // On vérifie chaque nutriment clé.
+        for (const [key, name] of Object.entries(fieldsToCheck)) {
+            // On regarde la donnée brute dans `base_100g` pour voir si elle était absente à l'origine.
+            if (typeof ing.base_100g[key] !== 'number') {
+                missingNutrients.push(name);
+            }
+        }
+
+        // Si on a trouvé au moins un nutriment manquant, on ajoute l'ingrédient à la liste pour l'avertissement.
+        if (missingNutrients.length > 0) {
+            incompleteIngredientsForDisclaimer.push({
+                name: ing.name,
+                missing: missingNutrients.join(', ')
+            });
+        }
+    });
+    
+    const disclaimerIconHtml = incompleteIngredientsForDisclaimer.length > 0 ? `
+        <button id="open-nutrition-disclaimer" class="text-yellow-400 hover:text-yellow-300 ml-3">
+            <i class="fa-solid fa-triangle-exclamation text-xl"></i>
+        </button>
+    ` : '';
+    // --- FIN DE LA NOUVELLE LOGIQUE ---
 
     const totalMacrosInGrams = allTotals.protein + allTotals.carbs + allTotals.fat;
     const proteinPercentage = totalMacrosInGrams > 0 ? (allTotals.protein / totalMacrosInGrams) * 100 : 0;
     const carbsPercentage = totalMacrosInGrams > 0 ? (allTotals.carbs / totalMacrosInGrams) * 100 : 0;
     const fatPercentage = totalMacrosInGrams > 0 ? (allTotals.fat / totalMacrosInGrams) * 100 : 0;
-    
-    // NOUVEAU : Calcul du pourcentage pour les fibres (basé sur un objectif de 10g par repas)
     const fiberPercentage = Math.min(100, (allTotals.fiber / 10) * 100);
 
     const modalContent = `
     <div class="glass-card w-full max-w-md p-6 rounded-t-3xl border-none h-auto flex flex-col">
-        <h2 class="text-2xl font-bold mb-6 text-center">Détails Nutritionnels</h2>
+        <header class="flex justify-center items-center mb-6">
+            <h2 class="text-2xl font-bold text-center">Détails Nutritionnels</h2>
+            ${disclaimerIconHtml}
+        </header>
         
         <div class="flex justify-between items-center mb-4">
             <div class="flex items-center gap-3">
@@ -7377,7 +7418,6 @@ function openMealDetailsModal() {
                 </div>
                 <div class="w-full bg-black/20 rounded-full h-1.5 mt-2"><div class="bg-sky-400 h-1.5 rounded-full" style="width: ${proteinPercentage}%"></div></div>
             </div>
-
             <div>
                 <div class="flex justify-between items-center">
                     <div class="flex items-center gap-3"><i class="fa-solid fa-bread-slice text-xl text-purple-400 w-6 text-center"></i><span class="font-semibold">Glucides</span></div>
@@ -7388,7 +7428,6 @@ function openMealDetailsModal() {
                     <span class="text-sm text-gray-400">dont Sucres</span><span class="text-sm font-semibold text-gray-300">${allTotals.sugars.toFixed(1)} g</span>
                 </div>
             </div>
-
             <div>
                 <div class="flex justify-between items-center">
                     <div class="flex items-center gap-3"><i class="fa-solid fa-cheese text-xl text-yellow-400 w-6 text-center"></i><span class="font-semibold">Lipides</span></div>
@@ -7399,7 +7438,6 @@ function openMealDetailsModal() {
                     <span class="text-sm text-gray-400">dont Graisses saturées</span><span class="text-sm font-semibold text-gray-300">${allTotals.saturated_fat.toFixed(1)} g</span>
                 </div>
             </div>
-            
              <div>
                 <div class="flex justify-between items-center">
                     <div class="flex items-center gap-3"><i class="fa-solid fa-leaf text-xl text-green-400 w-6 text-center"></i><span class="font-semibold">Fibres</span></div>
@@ -7412,6 +7450,37 @@ function openMealDetailsModal() {
         <button class="close-modal w-full mt-8 btn-primary">Fermer</button>
     </div>`;
     
+    showModal(modalContent, (modalWrapper) => {
+        const disclaimerBtn = modalWrapper.querySelector('#open-nutrition-disclaimer');
+        if (disclaimerBtn) {
+            disclaimerBtn.addEventListener('click', () => {
+                openNutritionDisclaimerModal(incompleteIngredientsForDisclaimer);
+            });
+        }
+    });
+}
+
+function openNutritionDisclaimerModal(invalidIngredients) {
+    const modalContent = `
+    <div class="glass-card p-6 rounded-3xl w-full max-w-sm text-center">
+        <header class="flex justify-center items-center gap-3 mb-4">
+            <i class="fa-solid fa-triangle-exclamation text-3xl text-yellow-400"></i>
+            <h2 class="text-xl font-bold">Avertissement</h2>
+        </header>
+        <p class="text-gray-300 text-sm leading-relaxed">
+            Les totaux nutritionnels de ce repas sont des <strong>estimations</strong>.
+            Certains ingrédients ont des données incomplètes, ce qui peut fausser le résultat final.
+        </p>
+        <div class="bg-black/20 p-3 rounded-lg mt-4 text-left max-h-40 overflow-y-auto scrollbar-hide">
+            ${invalidIngredients.map(ing => `
+                <div class="mb-2">
+                    <p class="font-bold text-white">${ing.name}</p>
+                    <p class="text-xs text-yellow-300">Données manquantes : ${ing.missing}</p>
+                </div>
+            `).join('')}
+        </div>
+        <button class="close-modal w-full mt-6 btn-primary">J'ai compris</button>
+    </div>`;
     showModal(modalContent);
 }
 
